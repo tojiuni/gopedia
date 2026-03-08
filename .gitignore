@@ -1,0 +1,2 @@
+# Local env; use .env.example as template. Do not commit secrets.
+.env

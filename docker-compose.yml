@@ -1,0 +1,31 @@
+# Gopedia Sub-phase 4.1.1 (Markdown Origin)
+# Use with: docker compose --env-file .env up -d
+# Network "neunexus" must exist (macvlan). Create via docker-network SKILL.
+# DB (PostgreSQL, TypeDB, Qdrant) are installed separately; set POSTGRES_HOST etc. in .env.
+
+services:
+  phloem-flow:
+    image: alpine:3.19
+    command: ["sleep", "infinity"]
+    env_file: .env
+    environment:
+      - GOPEDIA_SERVICE_NAME=${GOPEDIA_SERVICE_NAME:-gopedia}
+      - GOPEDIA_LOG_LEVEL=${GOPEDIA_LOG_LEVEL:-info}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-gopedia}
+      - TYPEDB_HOST=${TYPEDB_HOST}
+      - TYPEDB_PORT=${TYPEDB_PORT:-1729}
+      - TYPEDB_DATABASE=${TYPEDB_DATABASE:-gopedia}
+      - QDRANT_HOST=${QDRANT_HOST}
+      - QDRANT_PORT=${QDRANT_PORT:-6333}
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-gopedia_markdown}
+    networks:
+      - neunexus
+    # Replace image/command when phloem-flow binary is ready. For port exposure, attach to traefik_ports as well.
+
+networks:
+  neunexus:
+    external: true
