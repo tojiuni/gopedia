@@ -1,2 +1,22 @@
 # Local env; use .env.example as template. Do not commit secrets.
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
+
+# Go
+bin/
+obj/
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
