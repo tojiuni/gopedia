@@ -12,6 +12,12 @@ import (
 	pb "gopedia/core/proto/gen/go"
 )
 
+// SinkWriter is the interface used to persist one document to Rhizome (PG, Qdrant).
+// *Sink implements it; tests can use a recording implementation.
+type SinkWriter interface {
+	Write(ctx context.Context, msg *pb.RhizomeMessage, docID string, flatTOC []FlatTOCItem) error
+}
+
 // Sink writes to PostgreSQL, TypeDB, and Qdrant (L1 → L2 order).
 type Sink struct {
 	pg     *pgxpool.Pool
@@ -38,11 +44,7 @@ func NewSink(c SinkConfig) *Sink {
 
 // Write persists one document to Rhizome (PG doc row, then Qdrant L1 + L2 points).
 // docID is a string id for this document (e.g. fmt.Sprintf("%d", machineID)).
-func (s *Sink) Write(ctx context.Context, msg *pb.RhizomeMessage, docID string, flatTOC []struct {
-	Node      TOCNode
-	Path      string
-	SectionID string
-}) error {
+func (s *Sink) Write(ctx context.Context, msg *pb.RhizomeMessage, docID string, flatTOC []FlatTOCItem) error {
 	if s.pg != nil {
 		metaJSON, _ := json.Marshal(msg.SourceMetadata)
 		_, err := s.pg.Exec(ctx,

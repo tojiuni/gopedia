@@ -13,11 +13,11 @@ import (
 type Server struct {
 	pb.UnimplementedPhloemServer
 	idGen *identityso.Generator
-	sink  *Sink
+	sink  SinkWriter
 }
 
 // NewServer creates a Phloem gRPC server.
-func NewServer(sink *Sink) *Server {
+func NewServer(sink SinkWriter) *Server {
 	workerID := identityso.WorkerIDFromEnv()
 	return &Server{
 		idGen: identityso.NewGenerator(workerID),

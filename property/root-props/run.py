@@ -22,9 +22,15 @@ from property.root_props.markdown_loader import (
     collect_markdown_paths,
     load_markdown,
 )
+try:
+    from core.ontology_so import sync_document_to_typedb
+except ImportError:
+    sync_document_to_typedb = None  # TypeDB sync optional if driver missing
+
+# Env: TYPEDB_HOST (optional) — when set, syncs each ingested doc to TypeDB.
 
 
-def main() -> None:
+def main() -> None: -> None:
     if len(sys.argv) < 2:
         print("Usage: python -m property.root_props.run <path-to.md-or-dir>", file=sys.stderr)
         sys.exit(1)
@@ -43,6 +49,16 @@ def main() -> None:
             )
             if ok:
                 print(f"OK {md_path} -> doc_id={doc_id} machine_id={machine_id}")
+                if sync_document_to_typedb is not None and os.environ.get("TYPEDB_HOST"):
+                    try:
+                        sync_document_to_typedb(
+                            doc_id, int(machine_id), title, content
+                        )
+                    except Exception as e:
+                        print(
+                            f"TypeDB sync failed (doc_id={doc_id}): {e}",
+                            file=sys.stderr,
+                        )
             else:
                 print(f"FAIL {md_path} doc_id={doc_id} machine_id={machine_id}", file=sys.stderr)
                 sys.exit(2)

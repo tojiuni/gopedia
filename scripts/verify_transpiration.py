@@ -2,6 +2,7 @@
 """
 Transpiration test: keyword query -> Qdrant search -> TypeDB section context.
 Verifies that Qdrant returns relevant TOC/sections and TypeDB can be queried for parent/child.
+Exit codes: 0 = success (>=1 Qdrant hit; if TYPEDB_HOST set, >=1 TypeDB result), 1 = usage, 2 = OpenAI, 3 = Qdrant, 4 = no hits, 5 = TypeDB empty/fail.
 Usage: python scripts/verify_transpiration.py "keyword"
 Env: QDRANT_HOST, QDRANT_PORT, OPENAI_API_KEY, TYPEDB_HOST, TYPEDB_PORT, TYPEDB_DATABASE
 """
@@ -15,10 +16,10 @@ repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
 
-def main() -> None:
+def main() -> int:
     if len(sys.argv) < 2:
         print('Usage: python scripts/verify_transpiration.py "keyword"', file=sys.stderr)
-        sys.exit(1)
+        return 1
     query = sys.argv[1]
 
     # 1) Embed query via OpenAI
@@ -29,7 +30,7 @@ def main() -> None:
         query_vector = r.data[0].embedding
     except Exception as e:
         print(f"OpenAI embedding failed: {e}", file=sys.stderr)
-        sys.exit(2)
+        return 2
 
     # 2) Qdrant search
     qdrant_host = os.environ.get("QDRANT_HOST", "localhost")
@@ -46,11 +47,11 @@ def main() -> None:
         )
     except Exception as e:
         print(f"Qdrant search failed: {e}", file=sys.stderr)
-        sys.exit(3)
+        return 3
 
     if not hits:
-        print("No Qdrant hits for query:", query)
-        sys.exit(0)
+        print("No Qdrant hits for query:", query, file=sys.stderr)
+        return 4
 
     print("Qdrant hits (score, doc_id, section_id, toc_path):")
     for h in hits:
@@ -64,32 +65,37 @@ def main() -> None:
     typedb_host = os.environ.get("TYPEDB_HOST")
     if not typedb_host:
         print("TYPEDB_HOST not set; skipping TypeDB context check.")
-        sys.exit(0)
+        return 0
 
     try:
         from typedb.driver import TypeDB, SessionType, TransactionType
         addr = f"{typedb_host}:{os.environ.get('TYPEDB_PORT', '1729')}"
         db = os.environ.get("TYPEDB_DATABASE", "gopedia")
+        typedb_results: list = []
         with TypeDB.core_driver(addr) as driver:
             with driver.session(db, SessionType.DATA) as session:
                 with session.transaction(TransactionType.READ) as tx:
-                    # Match documents and their sections (composition)
                     result = tx.query.match(
                         'match $d isa document, has doc_id $doc_id, has title $title;'
                         ' $c (parent: $d, child: $s) isa composition;'
                         ' $s isa section, has section_id $sid, has toc_level $lvl, has body $body;'
                         ' get $doc_id, $title, $sid, $lvl, $body; limit 10;'
                     )
-                    # TypeDB 2.x returns a stream of answers
                     for ans in result:
+                        typedb_results.append(ans)
                         print("TypeDB:", ans)
+        if not typedb_results:
+            print("TypeDB: no document/section composition results (expected >=1 for E2E).", file=sys.stderr)
+            return 5
     except ImportError:
         print("typedb-driver not installed; skipping TypeDB.", file=sys.stderr)
     except Exception as e:
         print(f"TypeDB query failed: {e}", file=sys.stderr)
+        return 5
 
     print("Transpiration check done.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

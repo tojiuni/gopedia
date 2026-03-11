@@ -56,16 +56,15 @@ func TOCToJSON(roots []TOCNode) (string, error) {
 }
 
 // FlattenTOC returns all nodes in depth-first order with toc_path (e.g. "Root > Section > Sub").
-func FlattenTOC(roots []TOCNode) []struct {
+// FlatTOCItem is used by Sink.Write and tests.
+type FlatTOCItem struct {
 	Node      TOCNode
 	Path      string
 	SectionID string
-} {
-	var out []struct {
-		Node      TOCNode
-		Path      string
-		SectionID string
-	}
+}
+
+func FlattenTOC(roots []TOCNode) []FlatTOCItem {
+	var out []FlatTOCItem
 	var idx int
 	var visit func(nodes []TOCNode, pathParts []string)
 	visit = func(nodes []TOCNode, pathParts []string) {
@@ -74,11 +73,7 @@ func FlattenTOC(roots []TOCNode) []struct {
 			path := strings.Join(parts, " > ")
 			sectionID := fmt.Sprintf("s%d", idx)
 			idx++
-			out = append(out, struct {
-				Node      TOCNode
-				Path      string
-				SectionID string
-			}{Node: n, Path: path, SectionID: sectionID})
+			out = append(out, FlatTOCItem{Node: n, Path: path, SectionID: sectionID})
 			visit(n.Children, parts)
 		}
 	}
