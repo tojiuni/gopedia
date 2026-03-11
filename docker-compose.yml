@@ -1,31 +1,41 @@
-# Gopedia Sub-phase 4.1.1 (Markdown Origin)
+# Gopedia Sub-phase 0.0.1 (Markdown Origin)
 # Use with: docker compose --env-file .env up -d
 # Network "neunexus" must exist (macvlan). Create via docker-network SKILL.
 # DB (PostgreSQL, TypeDB, Qdrant) are installed separately; set POSTGRES_HOST etc. in .env.
 
 services:
   phloem-flow:
-    image: alpine:3.19
-    command: ["sleep", "infinity"]
+    image: registry.toji.homes/gopedia-phloem:0.0.1
+    build: .
     env_file: .env
     environment:
       - GOPEDIA_SERVICE_NAME=${GOPEDIA_SERVICE_NAME:-gopedia}
       - GOPEDIA_LOG_LEVEL=${GOPEDIA_LOG_LEVEL:-info}
+      - GOPEDIA_PHLOEM_GRPC_ADDR=0.0.0.0:50051
+      - GOPEDIA_IDENTITY_WORKER_ID=${GOPEDIA_IDENTITY_WORKER_ID:-0}
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-gopedia}
+      - POSTGRES_SSLMODE=${POSTGRES_SSLMODE:-disable}
       - TYPEDB_HOST=${TYPEDB_HOST}
       - TYPEDB_PORT=${TYPEDB_PORT:-1729}
       - TYPEDB_DATABASE=${TYPEDB_DATABASE:-gopedia}
       - QDRANT_HOST=${QDRANT_HOST}
       - QDRANT_PORT=${QDRANT_PORT:-6333}
+      - QDRANT_GRPC_PORT=${QDRANT_GRPC_PORT:-6334}
       - QDRANT_COLLECTION=${QDRANT_COLLECTION:-gopedia_markdown}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_EMBEDDING_MODEL=${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+    ports:
+      - "50051:50051"
     networks:
       - neunexus
-    # Replace image/command when phloem-flow binary is ready. For port exposure, attach to traefik_ports as well.
+      - traefik-net
 
 networks:
   neunexus:
+    external: true
+  traefik-net:
     external: true

@@ -1,0 +1,22 @@
+# Git and local
+.git
+.env
+*.local
+
+# Python
+__pycache__
+*.pyc
+.pytest_cache
+.venv
+venv
+
+# IDE
+.idea
+.cursor
+
+# Docs and plans (not needed for build)
+*.plan.md
+docs
+
+# Tests (optional for image size)
+tests
