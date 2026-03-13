@@ -1,22 +1,23 @@
 define
-  doc_id sub attribute, value string;
-  title sub attribute, value string;
-  section_id sub attribute, value string;
-  toc_level sub attribute, value long;
-  body sub attribute, value string;
+  attribute doc_id, value string;
+  attribute title, value string;
+  attribute section_id, value string;
+  attribute toc_level, value integer;
+  attribute body, value string;
 
-  document sub entity,
-    owns doc_id @key,
+  entity document,
+    owns doc_id,
     owns title;
 
-  section sub entity,
-    owns section_id @key,
+  entity section,
+    owns section_id,
     owns toc_level,
     owns body;
 
-  composition sub relation,
+  relation composition,
     relates parent,
     relates child;
 
   document plays composition:parent;
-  section plays composition:parent, composition:child;
+  section plays composition:child,
+    plays composition:parent;
