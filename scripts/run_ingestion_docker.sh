@@ -14,6 +14,19 @@ KEYWORD="${2:-서론}"
 echo "=== Build ingestion image (Python + protobuf>=4.25) ==="
 docker build -f Dockerfile.ingestion -t "$IMAGE" .
 
+echo "=== Initialize DBs inside ingestion container (DBInitializer.init_all) ==="
+docker run --rm \
+  --network neunexus \
+  --env-file .env \
+  -e POSTGRES_HOST="${POSTGRES_HOST:-postgres_db}" \
+  -e TYPEDB_HOST="${TYPEDB_HOST:-typedb}" \
+  -e QDRANT_HOST="${QDRANT_HOST:-qdrant}" \
+  -e GOPEDIA_PHLOEM_GRPC_ADDR="${GOPEDIA_PHLOEM_GRPC_ADDR:-phloem-flow:50051}" \
+  -v "$PWD:/app" \
+  -w /app \
+  "$IMAGE" \
+  python -c "from dotenv import load_dotenv; load_dotenv('.env'); from tests.initialize import DBInitializer; print(DBInitializer().init_all(skip_missing=True))"
+
 echo "=== Run ingestion + E2E on network neunexus (sample=$SAMPLE_MD, keyword=$KEYWORD) ==="
 docker run --rm \
   --network neunexus \
