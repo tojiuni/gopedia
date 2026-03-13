@@ -1,6 +1,6 @@
 """
 Sync a single document from (doc_id, machine_id, title, content) into TypeDB.
-Inserts document + sections + composition hierarchy per core/ontology-so/typedb_schema.typeql.
+Inserts document + sections + composition hierarchy per core/ontology_so/typedb_schema.typeql.
 Used by Root after Phloem IngestMarkdown, or by a batch script reading from PG.
 """
 from __future__ import annotations

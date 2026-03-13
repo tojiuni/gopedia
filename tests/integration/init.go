@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/qdrant/go-client/qdrant"
 
-	"gopedia/core/ontology-so"
+	"gopedia/core/ontology_so"
 )
 
 func getEnv(key, def string) string {
@@ -22,7 +22,7 @@ func getEnv(key, def string) string {
 	return def
 }
 
-// InitPostgres runs the DDL at ddlPath (e.g. core/ontology-so/postgres_ddl.sql) against the given connStr.
+// InitPostgres runs the DDL at ddlPath (e.g. core/ontology_so/postgres_ddl.sql) against the given connStr.
 // Creates documents table if not exists. Returns error on failure.
 func InitPostgres(ctx context.Context, connStr string, ddlPath string) error {
 	ddl, err := os.ReadFile(ddlPath)
@@ -51,7 +51,7 @@ func InitQdrant(ctx context.Context, host string, port int, collection string, v
 }
 
 // InitPostgresFromEnv initializes Postgres using env POSTGRES_*. ddlPath is path to postgres_ddl.sql (relative to repo root).
-// If repoRoot is empty, it is auto-detected by walking up from the current directory to find core/ontology-so/postgres_ddl.sql.
+// If repoRoot is empty, it is auto-detected by walking up from the current directory to find core/ontology_so/postgres_ddl.sql.
 func InitPostgresFromEnv(ctx context.Context, repoRoot string, ddlPath string) error {
 	host := getEnv("POSTGRES_HOST", "")
 	user := getEnv("POSTGRES_USER", "")
@@ -72,7 +72,7 @@ func InitPostgresFromEnv(ctx context.Context, repoRoot string, ddlPath string) e
 	return InitPostgres(ctx, connStr, path)
 }
 
-// findRepoRoot walks up from the current directory to find a directory containing the given relPath (e.g. core/ontology-so/postgres_ddl.sql).
+// findRepoRoot walks up from the current directory to find a directory containing the given relPath (e.g. core/ontology_so/postgres_ddl.sql).
 func findRepoRoot(relPath string) (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -112,7 +112,7 @@ func InitAllFromEnv(ctx context.Context, repoRoot string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := InitPostgresFromEnv(ctx, repoRoot, "core/ontology-so/postgres_ddl.sql"); err != nil {
+	if err := InitPostgresFromEnv(ctx, repoRoot, "core/ontology_so/postgres_ddl.sql"); err != nil {
 		return err
 	}
 	return InitQdrantFromEnv(ctx)

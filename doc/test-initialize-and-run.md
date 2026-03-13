@@ -40,8 +40,8 @@ print('init_all result:', r)
 ```
 
 - **동작 요약**:
-  - Postgres: `core/ontology-so/postgres_ddl.sql` 적용(`documents` 테이블 등)
-  - TypeDB: DB 존재 여부 확인 후 스키마(`core/ontology-so/typedb_schema.typeql`) 적용
+  - Postgres: `core/ontology_so/postgres_ddl.sql` 적용(`documents` 테이블 등)
+  - TypeDB: DB 존재 여부 확인 후 스키마(`core/ontology_so/typedb_schema.typeql`) 적용
   - Qdrant:
     - 기존 마크다운 컬렉션(`QDRANT_COLLECTION`) 보장
     - 문서 컬렉션 `QDRANT_DOC_COLLECTION` (기본 `gopedia_document`)을
@@ -85,6 +85,24 @@ cd /morphogen/neunexus/gopedia
   - `Transpiration check done.`
   가 출력됨
 
+### 3.1 Docker 로그 예시
+
+아래와 같이 Docker 컨테이너 로그에 전체 플로우가 한 번에 찍히면 정상입니다.
+
+```text
+=== Build ingestion image (Python + protobuf>=4.25) ===
+...
+=== Run ingestion + E2E on network neunexus (sample=tests/fixtures/sample.md, keyword=Introduction) ===
+=== Transpiration E2E (sample=tests/fixtures/sample.md, keyword=Introduction) ===
+Ingesting tests/fixtures/sample.md ...
+OK /app/tests/fixtures/sample.md -> doc_id=... machine_id=...
+Running verify_transpiration.py "Introduction" ...
+Qdrant hits (score, doc_id, section_id, toc_path):
+  score=0.0000 doc_id=... section_id=... toc_path=...
+Transpiration check done.
+=== Transpiration E2E done (OK) ===
+```
+
 ---
 
 ## 4. 이미 초기화된 환경에서 Transpiration만 실행할 때
@@ -116,7 +134,7 @@ python scripts/verify_transpiration.py "Introduction"
 | 파일 | 용도 |
 |------|------|
 | `tests/initialize.py` | Python `DBInitializer` (Postgres / TypeDB / Qdrant 초기화) |
-| `core/ontology-so/typedb_schema.typeql` | TypeDB document/section/composition 스키마 |
+| `core/ontology_so/typedb_schema.typeql` | TypeDB document/section/composition 스키마 |
 | `core/ontology_so/typedb_sync.py` | 인게스트된 문서를 TypeDB document/section/composition 으로 동기화 |
 | `scripts/run_ingestion_docker.sh` | Docker 이미지 빌드 + 컨테이너에서 DB 초기화 및 Transpiration E2E 실행 |
 | `scripts/run_transpiration_e2e.sh` | 샘플 마크다운 인게스트 + `verify_transpiration.py` 실행 |

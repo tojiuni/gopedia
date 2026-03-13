@@ -14,7 +14,7 @@
 |--------|------|------|
 | TestDockerNetworkExternalValid | PASS | - |
 | TestConnectivityOverNeunexus | **FAIL** | 호스트에서 실행 시 `.env`의 내부 호스트명(`typedb`, `qdrant`, `postgres_db`, `phloem-flow`)이 DNS로 해석되지 않음. 해당 이름은 Docker 네트워크(neunexus/traefik-net) 내부에서만 유효. |
-| TestInitAllFromEnv | **FAIL** | `open core/ontology-so/postgres_ddl.sql: no such file or directory` — `GOPEDIA_REPO_ROOT` 또는 테스트 실행 CWD가 레포 루트가 아니어서 DDL 경로를 찾지 못함. |
+| TestInitAllFromEnv | **FAIL** | `open core/ontology_so/postgres_ddl.sql: no such file or directory` — `GOPEDIA_REPO_ROOT` 또는 테스트 실행 CWD가 레포 루트가 아니어서 DDL 경로를 찾지 못함. |
 | TestTypeDBReachable | **FAIL** | `typedb:1729` 호스트명 미해석 (로컬 호스트에는 typedb 서버 없음). |
 | TestQdrantConnect | **FAIL** | `qdrant` 호스트명 미해석 → `name resolver error: produced zero addresses`. |
 | TestPostgresConnect | **FAIL** | `postgres_db` 호스트명 미해석 → `lookup postgres_db on ... no such host`. |
@@ -57,7 +57,7 @@
 | Qdrant | **연결 성공** | - |
 | Phloem (phloem-flow:50051) | **연결 성공** | compose로 기동된 컨테이너 도달 |
 | Postgres | **연결 성공** | - |
-| **documents 테이블** | **FAIL** | `documents table not found (run core/ontology-so/postgres_ddl.sql)` |
+| **documents 테이블** | **FAIL** | `documents table not found (run core/ontology_so/postgres_ddl.sql)` |
 | TestConnectivityOverTraefikNet | SKIP | DOCKER_NETWORK_EXTERNAL=neunexus 로만 실행되어 스킵 |
 
 **Docker 실패 요약**: 네트워크·서비스 연결은 모두 성공. **Postgres에 `documents` 테이블이 없어서** 해당 검사만 실패.
@@ -70,8 +70,8 @@
 |------|------|------|
 | **로컬 테스트 전반** | `.env`가 Docker 내부 호스트명(typedb, qdrant, postgres_db, phloem-flow) 기준이라, **호스트에서는 이름 해석·접근 불가**. | 로컬에서 돌릴 때는 `localhost` 또는 실제 접근 가능한 호스트로 별도 env 사용하거나, **Docker 네트워크 테스트만 사용** (아래 스크립트). |
 | **로컬 Phloem** | 호스트에서 `go run ./cmd/phloem` 또는 포트 포워딩된 프로세스가 없음. | 로컬에서 Phloem 기동하거나, Docker compose로 띄운 뒤 **Docker 네트워크 테스트**로 검증. |
-| **TestInitAllFromEnv (로컬)** | DDL 경로 `core/ontology-so/postgres_ddl.sql`을 **레포 루트 기준**으로 찾는데, CWD 또는 `GOPEDIA_REPO_ROOT`가 레포 루트가 아님. | `go test`를 **레포 루트(gopedia)**에서 실행하고 `GOPEDIA_REPO_ROOT` 비우거나 `"."` 로 두기. **수정됨**: `InitPostgresFromEnv`에서 `repoRoot`가 비어 있거나 `"."` 이면 상위 디렉터리를 탐색해 `core/ontology-so/postgres_ddl.sql`이 있는 디렉터리를 레포 루트로 사용함. |
-| **Docker 테스트 유일 실패** | Postgres DB에는 연결되지만 **`documents` 테이블이 없음**. | **한 번만** DDL 적용: `tests/initialize.py`의 `DBInitializer().init_all()` 또는 `core/ontology-so/postgres_ddl.sql`을 해당 Postgres에 실행. |
+| **TestInitAllFromEnv (로컬)** | DDL 경로 `core/ontology_so/postgres_ddl.sql`을 **레포 루트 기준**으로 찾는데, CWD 또는 `GOPEDIA_REPO_ROOT`가 레포 루트가 아님. | `go test`를 **레포 루트(gopedia)**에서 실행하고 `GOPEDIA_REPO_ROOT` 비우거나 `"."` 로 두기. **수정됨**: `InitPostgresFromEnv`에서 `repoRoot`가 비어 있거나 `"."` 이면 상위 디렉터리를 탐색해 `core/ontology_so/postgres_ddl.sql`이 있는 디렉터리를 레포 루트로 사용함. |
+| **Docker 테스트 유일 실패** | Postgres DB에는 연결되지만 **`documents` 테이블이 없음**. | **한 번만** DDL 적용: `tests/initialize.py`의 `DBInitializer().init_all()` 또는 `core/ontology_so/postgres_ddl.sql`을 해당 Postgres에 실행. |
 
 ---
 
@@ -80,7 +80,7 @@
 1. **Postgres 초기화 (최초 1회)**  
    - Docker/로컬 중 Postgres에 접근 가능한 환경에서:
    - Python: `from tests.initialize import DBInitializer; DBInitializer().init_all()`  
-   - 또는: `psql -h <POSTGRES_HOST> -U <POSTGRES_USER> -d <POSTGRES_DB> -f core/ontology-so/postgres_ddl.sql`
+   - 또는: `psql -h <POSTGRES_HOST> -U <POSTGRES_USER> -d <POSTGRES_DB> -f core/ontology_so/postgres_ddl.sql`
 
 2. **연동 검증은 Docker 네트워크 테스트로**  
    - `./scripts/run_integration_tests_docker_networks.sh`  

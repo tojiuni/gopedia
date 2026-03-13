@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_ONTOLOGY_DIR = _REPO_ROOT / "core" / "ontology-so"
+_ONTOLOGY_DIR = _REPO_ROOT / "core" / "ontology_so"
 
 
 def _env(name: str, default: str = "") -> str:

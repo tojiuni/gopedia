@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "gopedia/core/proto/gen/go"
-	"gopedia/core/ontology-so"
+	"gopedia/core/ontology_so"
 )
 
 const (
@@ -137,7 +137,7 @@ func runConnectivityChecks(t *testing.T) {
 			var exists bool
 			_ = pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'documents')").Scan(&exists)
 			if !exists {
-				t.Error("documents table not found (run core/ontology-so/postgres_ddl.sql)")
+				t.Error("documents table not found (run core/ontology_so/postgres_ddl.sql)")
 			}
 		}
 	}

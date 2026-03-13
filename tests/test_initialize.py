@@ -44,6 +44,10 @@ def test_db_initializer_init_all() -> None:
 @pytest.mark.skipif(not _env_set("POSTGRES_HOST", "POSTGRES_USER"), reason="POSTGRES_* not set")
 def test_db_initializer_init_postgres() -> None:
     """init_postgres 호출 시 documents 테이블 생성 또는 이미 존재."""
+    try:
+        import psycopg  # noqa: F401
+    except ImportError:
+        pytest.skip("psycopg not installed")
     init = DBInitializer()
     ok = init.init_postgres()
     assert ok is True

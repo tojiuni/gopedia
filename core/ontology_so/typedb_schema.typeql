@@ -1,0 +1,22 @@
+define
+  doc_id sub attribute, value string;
+  title sub attribute, value string;
+  section_id sub attribute, value string;
+  toc_level sub attribute, value long;
+  body sub attribute, value string;
+
+  document sub entity,
+    owns doc_id @key,
+    owns title;
+
+  section sub entity,
+    owns section_id @key,
+    owns toc_level,
+    owns body;
+
+  composition sub relation,
+    relates parent,
+    relates child;
+
+  document plays composition:parent;
+  section plays composition:parent, composition:child;

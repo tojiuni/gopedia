@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "gopedia/core/proto/gen/go"
-	"gopedia/core/ontology-so"
+	"gopedia/core/ontology_so"
 )
 
 func dialReachable(network, addr string, timeout time.Duration) bool {
@@ -93,7 +93,7 @@ func TestPostgresConnect(t *testing.T) {
 		t.Fatalf("Postgres query: %v", err)
 	}
 	if !exists {
-		t.Fatal("documents table not found (run core/ontology-so/postgres_ddl.sql)")
+		t.Fatal("documents table not found (run core/ontology_so/postgres_ddl.sql)")
 	}
 }
 

@@ -58,7 +58,7 @@
 |------|------|
 | **호스트에서 Docker 내부 이름 사용** | `.env`에 `TYPEDB_HOST=typedb`, `QDRANT_HOST=qdrant`, `POSTGRES_HOST=postgres_db` 등으로 설정된 상태에서 **호스트**에서 테스트 시 해당 이름이 DNS로 해석되지 않아 연결 실패 → **Docker 네트워크(neunexus/traefik-net)에 붙은 컨테이너 안에서** 테스트 실행하거나, 호스트에서 쓸 때는 `localhost` 또는 실제 IP/호스트명으로 설정. |
 | **Phloem 미기동** | `go run ./cmd/phloem` 또는 `docker compose up -d`(phloem-flow)로 Phloem 기동 후 재실행. |
-| **Postgres `documents` 테이블 없음** | `core/ontology-so/postgres_ddl.sql` 한 번 실행. |
+| **Postgres `documents` 테이블 없음** | `core/ontology_so/postgres_ddl.sql` 한 번 실행. |
 | **Postgres 호스트명 `postgres_db` 미해석** | 호스트에서 실행 시 `postgres_db`가 같은 네트워크/ DNS에 없으면 실패. Docker 내부에서 실행하거나, 호스트용으로 Postgres 접근 가능한 호스트명으로 `.env` 수정. |
 
 ---

@@ -39,7 +39,7 @@ def test_typedb_connect(typedb_host: str, typedb_port: str, typedb_database: str
         dbs = [db.name for db in driver.databases.all()]
         assert (
             typedb_database in dbs
-        ), f"Database '{typedb_database}' not found (run core/ontology-so/typedb_init.py)"
+        ), f"Database '{typedb_database}' not found (run core/ontology_so/typedb_init.py)"
         with driver.transaction(typedb_database, TransactionType.READ) as tx:
             result = tx.query("match $x isa document; get $x; limit 1;").resolve()
             # Force materialization
@@ -112,7 +112,7 @@ def test_postgres_connect(
                 "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'documents')"
             )
             exists = cur.fetchone()[0]
-    assert exists, "documents table not found (run core/ontology-so/postgres_ddl.sql)"
+    assert exists, "documents table not found (run core/ontology_so/postgres_ddl.sql)"
 
 
 def _phloem_addr() -> str:
