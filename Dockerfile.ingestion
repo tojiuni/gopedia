@@ -1,0 +1,13 @@
+# Ingestion/E2E test runner: Python, protobuf>=4.25, Root + TypeDB sync + verify_transpiration.
+# Run on neunexus/traefik-net so it can reach phloem-flow, typedb, qdrant, postgres_db.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+# Match gencode 7.x; grpcio-tools may pull protobuf 6.x so upgrade after
+RUN pip install --no-cache-dir --upgrade 'protobuf>=4.25'
+
+# Default: run full E2E (ingest + verify). Override with docker run ... <cmd>
+CMD ["./scripts/run_transpiration_e2e.sh", "doc/sample.md", "서론"]

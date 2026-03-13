@@ -34,6 +34,9 @@ class DBInitializer:
         qdrant_port: Optional[int] = None,
         qdrant_collection: Optional[str] = None,
         qdrant_vector_size: int = 1536,
+        qdrant_doc_collection: Optional[str] = None,
+        qdrant_doc_vector_name: Optional[str] = None,
+        qdrant_doc_vector_size: Optional[int] = None,
     ) -> None:
         self.postgres_host = postgres_host or _env("POSTGRES_HOST", "")
         self.postgres_port = postgres_port or _env("POSTGRES_PORT", "5432")
@@ -47,6 +50,15 @@ class DBInitializer:
         self.qdrant_port = qdrant_port or int(_env("QDRANT_PORT", "6333"))
         self.qdrant_collection = qdrant_collection or _env("QDRANT_COLLECTION", "gopedia_markdown")
         self.qdrant_vector_size = qdrant_vector_size
+        self.qdrant_doc_collection = qdrant_doc_collection or _env(
+            "QDRANT_DOC_COLLECTION", "gopedia_document"
+        )
+        self.qdrant_doc_vector_name = qdrant_doc_vector_name or _env(
+            "QDRANT_DOC_VECTOR_NAME", "wiki"
+        )
+        self.qdrant_doc_vector_size = int(
+            qdrant_doc_vector_size or _env("QDRANT_DOC_VECTOR_SIZE", "1536")
+        )
 
     def init_postgres(self) -> bool:
         """PostgreSQL: documents 테이블이 없으면 생성. 성공 시 True."""
@@ -71,11 +83,19 @@ class DBInitializer:
         return True
 
     def init_typedb(self) -> bool:
-        """TypeDB: DB가 없으면 생성하고 스키마 적용. 성공 시 True."""
+        """TypeDB: DB가 없으면 생성하고 스키마 적용. 성공 시 True.
+
+        typedb-driver 3.x API를 사용한다.
+        """
         if not self.typedb_host:
             return False
         try:
-            from typedb.driver import TypeDB, SessionType, TransactionType
+            from typedb.driver import (
+                Credentials,
+                DriverOptions,
+                TransactionType,
+                TypeDB,
+            )
         except ImportError:
             return False
         schema_path = _ONTOLOGY_DIR / "typedb_schema.typeql"
@@ -83,38 +103,87 @@ class DBInitializer:
             return False
         schema_text = schema_path.read_text()
         addr = f"{self.typedb_host}:{self.typedb_port}"
-        with TypeDB.core_driver(addr) as driver:
+        username = _env("TYPEDB_USERNAME", "admin")
+        password = _env("TYPEDB_PASSWORD", "password")
+
+        driver = TypeDB.driver(
+            addr,
+            Credentials(username, password),
+            DriverOptions(is_tls_enabled=False),
+        )
+        try:
             dbs = [db.name for db in driver.databases.all()]
             if self.typedb_database not in dbs:
                 driver.databases.create(self.typedb_database)
-            with driver.session(self.typedb_database, SessionType.SCHEMA) as session:
-                with session.transaction(TransactionType.WRITE) as tx:
-                    tx.query.define(schema_text)
-                    tx.commit()
+            with driver.transaction(
+                self.typedb_database, TransactionType.SCHEMA
+            ) as tx:
+                tx.query(schema_text).resolve()
+                tx.commit()
+        finally:
+            driver.close()
         return True
 
     def init_qdrant(self) -> bool:
-        """Qdrant: 컬렉션이 없으면 생성. 성공 시 True."""
+        """Qdrant: 컬렉션이 없으면 생성. 성공 시 True.
+
+        - 기본 컬렉션(self.qdrant_collection): 단일 벡터 설정.
+        - 문서용 컬렉션(self.qdrant_doc_collection): config 기반(named vector) + 초기 vector upsert.
+        """
         if not self.qdrant_host:
             return False
         try:
             from qdrant_client import QdrantClient
-            from qdrant_client.models import VectorParams, Distance
+            from qdrant_client.models import Distance, PointStruct, VectorParams
         except ImportError:
             return False
         client = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
+
+        # 1) 기존 markdown 컬렉션 보장
         try:
             client.get_collection(self.qdrant_collection)
-            return True
         except Exception:
-            pass
-        client.create_collection(
-            collection_name=self.qdrant_collection,
-            vectors_config=VectorParams(
-                size=self.qdrant_vector_size,
-                distance=Distance.COSINE,
-            ),
-        )
+            client.create_collection(
+                collection_name=self.qdrant_collection,
+                vectors_config=VectorParams(
+                    size=self.qdrant_vector_size,
+                    distance=Distance.COSINE,
+                ),
+            )
+
+        # 2) gopedia_document 컬렉션(named vector "wiki") 생성 + 초기 벡터 upsert
+        if self.qdrant_doc_collection:
+            try:
+                client.get_collection(self.qdrant_doc_collection)
+            except Exception:
+                vectors_config = {
+                    self.qdrant_doc_vector_name: VectorParams(
+                        size=self.qdrant_doc_vector_size,
+                        distance=Distance.COSINE,
+                    )
+                }
+                client.create_collection(
+                    collection_name=self.qdrant_doc_collection,
+                    vectors_config=vectors_config,
+                )
+
+                # 최초 생성 시, config 기반 차원(self.qdrant_doc_vector_size)으로 seed 벡터 upsert
+                seed_vector = [0.0] * self.qdrant_doc_vector_size
+                points = [
+                    PointStruct(
+                        id=1,
+                        vector={self.qdrant_doc_vector_name: seed_vector},
+                        payload={
+                            "source": "tests.initialize",
+                            "kind": "seed",
+                        },
+                    )
+                ]
+                client.upsert(
+                    collection_name=self.qdrant_doc_collection,
+                    points=points,
+                )
+
         return True
 
     def init_all(self, *, skip_missing: bool = True) -> dict[str, bool]:

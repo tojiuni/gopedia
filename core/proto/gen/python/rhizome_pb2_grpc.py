@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import rhizome_pb2 as rhizome__pb2
+from . import rhizome_pb2 as rhizome__pb2
 
 
 class PhloemStub(object):

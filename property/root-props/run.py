@@ -30,7 +30,7 @@ except ImportError:
 # Env: TYPEDB_HOST (optional) — when set, syncs each ingested doc to TypeDB.
 
 
-def main() -> None: -> None:
+def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: python -m property.root_props.run <path-to.md-or-dir>", file=sys.stderr)
         sys.exit(1)

@@ -22,17 +22,30 @@ def _typedb_configured() -> bool:
 @pytest.mark.skipif(not _typedb_configured(), reason="TYPEDB_HOST not set")
 def test_typedb_connect(typedb_host: str, typedb_port: str, typedb_database: str) -> None:
     try:
-        from typedb.driver import TypeDB, SessionType, TransactionType
+        from typedb.driver import Credentials, DriverOptions, TransactionType, TypeDB
     except ImportError:
         pytest.skip("typedb-driver not installed")
 
     addr = f"{typedb_host}:{typedb_port}"
-    with TypeDB.core_driver(addr) as driver:
+    username = os.environ.get("TYPEDB_USERNAME", "admin")
+    password = os.environ.get("TYPEDB_PASSWORD", "password")
+
+    driver = TypeDB.driver(
+        addr,
+        Credentials(username, password),
+        DriverOptions(is_tls_enabled=False),
+    )
+    try:
         dbs = [db.name for db in driver.databases.all()]
-        assert typedb_database in dbs, f"Database '{typedb_database}' not found (run core/ontology-so/typedb_init.py)"
-        with driver.session(typedb_database, SessionType.DATA) as session:
-            with session.transaction(TransactionType.READ) as tx:
-                list(tx.query.match("match $x isa document; get $x; limit 1;"))
+        assert (
+            typedb_database in dbs
+        ), f"Database '{typedb_database}' not found (run core/ontology-so/typedb_init.py)"
+        with driver.transaction(typedb_database, TransactionType.READ) as tx:
+            result = tx.query("match $x isa document; get $x; limit 1;").resolve()
+            # Force materialization
+            list(result.as_concept_rows())
+    finally:
+        driver.close()
 
 
 def _qdrant_configured() -> bool:

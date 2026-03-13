@@ -1,0 +1,10 @@
+# Gopedia ingestion and tests (Root, TypeDB sync, verify_transpiration)
+# protobuf is installed in Dockerfile.ingestion (pip install --upgrade 'protobuf>=4.25') to match gencode.
+grpcio>=1.60
+grpcio-tools>=1.60
+python-dotenv>=1.0
+python-frontmatter>=1.0
+psycopg[binary]>=3.1
+typedb-driver>=3.8.1
+qdrant-client>=1.17.0
+openai>=1.12

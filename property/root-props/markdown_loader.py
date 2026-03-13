@@ -28,10 +28,11 @@ def load_markdown(path: str | Path) -> tuple[str, str, dict[str, str]]:
     try:
         import frontmatter
     except ImportError:
-        # No frontmatter lib: treat whole file as content, title from first # line or filename
         title = path.stem.replace("-", " ").replace("_", " ").title()
         return raw, title, {}
-
+    if not hasattr(frontmatter, "loads"):
+        title = path.stem.replace("-", " ").replace("_", " ").title()
+        return raw, title, {}
     post = frontmatter.loads(raw)
     meta = dict(post.metadata) if post.metadata else {}
     title = meta.pop("title", path.stem.replace("-", " ").replace("_", " ").title())
