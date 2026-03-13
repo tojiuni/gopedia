@@ -4,12 +4,15 @@ DB 초기화: PostgreSQL, TypeDB, Qdrant 테이블/DB/컬렉션이 없으면 생
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ONTOLOGY_DIR = _REPO_ROOT / "core" / "ontology_so"
+
+logger = logging.getLogger(__name__)
 
 
 def _env(name: str, default: str = "") -> str:
@@ -88,41 +91,98 @@ class DBInitializer:
         typedb-driver 3.x API를 사용한다.
         """
         if not self.typedb_host:
+            logger.error("TypeDB host가 설정되지 않았습니다.")
             return False
+
         try:
             from typedb.driver import (
                 Credentials,
                 DriverOptions,
                 TransactionType,
                 TypeDB,
+                TypeDBDriverException,
             )
         except ImportError:
+            logger.error("typedb-driver 가 설치되어 있지 않습니다.")
             return False
+
         schema_path = _ONTOLOGY_DIR / "typedb_schema.typeql"
         if not schema_path.exists():
+            logger.error("TypeDB 스키마 파일을 찾을 수 없습니다: %s", schema_path)
             return False
-        schema_text = schema_path.read_text()
-        addr = f"{self.typedb_host}:{self.typedb_port}"
-        username = _env("TYPEDB_USERNAME", "admin")
-        password = _env("TYPEDB_PASSWORD", "password")
 
-        driver = TypeDB.driver(
-            addr,
-            Credentials(username, password),
-            DriverOptions(is_tls_enabled=False),
+        addr = f"{self.typedb_host}:{self.typedb_port}"
+        credentials = Credentials(
+            _env("TYPEDB_USERNAME", "admin"),
+            _env("TYPEDB_PASSWORD", "password"),
         )
+        options = DriverOptions(is_tls_enabled=False)
+
         try:
-            dbs = [db.name for db in driver.databases.all()]
-            if self.typedb_database not in dbs:
-                driver.databases.create(self.typedb_database)
+            with TypeDB.driver(addr, credentials, options) as driver:
+                # 데이터베이스 존재 여부 확인 및 생성
+                try:
+                    exists = (
+                        driver.databases.contains(self.typedb_database)
+                        if hasattr(driver.databases, "contains")
+                        else self.typedb_database
+                        in [db.name for db in driver.databases.all()]
+                    )
+                except Exception as e:
+                    logger.error("TypeDB 데이터베이스 조회 중 오류: %s", e)
+                    return False
+
+                if not exists:
+                    logger.info("TypeDB 데이터베이스 생성 중: %s", self.typedb_database)
+                    driver.databases.create(self.typedb_database)
+
+                # 메인 스키마 적용
+                schema_text = schema_path.read_text().strip()
+                if schema_text:
+                    logger.info("TypeDB 메인 스키마를 적용합니다.")
+                    with driver.transaction(
+                        self.typedb_database, TransactionType.SCHEMA
+                    ) as tx:
+                        tx.query(schema_text).resolve()
+                        tx.commit()
+
+                # 최소 document 스키마 보장
+                self._ensure_minimal_typedb_schema(driver)
+
+            logger.info("TypeDB 초기화 성공")
+            return True
+        except TypeDBDriverException as e:
+            logger.error("TypeDB 드라이버 오류 발생: %s", e)
+        except Exception as e:
+            logger.exception("TypeDB 초기화 중 예상치 못한 오류 발생: %s", e)
+
+        return False
+
+    def _ensure_minimal_typedb_schema(self, driver) -> None:
+        """최소한 document 스키마가 존재하도록 보장한다."""
+        try:
+            from typedb.driver import TransactionType
+        except ImportError:
+            return
+
+        minimal_doc_schema = """
+define
+  attribute doc_id, value string;
+  attribute title, value string;
+
+  entity document,
+    owns doc_id,
+    owns title;
+"""
+        try:
             with driver.transaction(
                 self.typedb_database, TransactionType.SCHEMA
             ) as tx:
-                tx.query(schema_text).resolve()
+                tx.query(minimal_doc_schema).resolve()
                 tx.commit()
-        finally:
-            driver.close()
-        return True
+        except Exception:
+            # 이미 정의되어 있는 경우 등은 무시
+            return
 
     def init_qdrant(self) -> bool:
         """Qdrant: 컬렉션이 없으면 생성. 성공 시 True.
