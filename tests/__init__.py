@@ -1,1 +1,0 @@
-# Gopedia tests package.
