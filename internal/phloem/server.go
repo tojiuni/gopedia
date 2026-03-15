@@ -2,62 +2,41 @@ package phloem
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 
 	pb "gopedia/core/proto/gen/go"
-	identityso "gopedia/core/identity_so"
 )
 
 // Server implements the Phloem gRPC service.
+// It delegates to domain-specific pipelines registered in the registry.
 type Server struct {
 	pb.UnimplementedPhloemServer
-	idGen *identityso.Generator
-	sink  SinkWriter
 }
 
-// NewServer creates a Phloem gRPC server.
-func NewServer(sink SinkWriter) *Server {
-	workerID := identityso.WorkerIDFromEnv()
-	return &Server{
-		idGen: identityso.NewGenerator(workerID),
-		sink:  sink,
+// NewServer creates a Phloem gRPC server that routes requests by domain.
+// Pipelines must be registered (e.g. in main) before serving.
+func NewServer() *Server {
+	return &Server{}
+}
+
+// domainFromRequest returns the pipeline domain: req.Domain, or source_metadata["domain"], or "wiki".
+func domainFromRequest(req *pb.IngestRequest) string {
+	if req != nil && req.Domain != "" {
+		return req.Domain
 	}
+	if req != nil && req.SourceMetadata != nil {
+		if d := req.SourceMetadata["domain"]; d != "" {
+			return d
+		}
+	}
+	return "wiki"
 }
 
-// IngestMarkdown receives markdown from Root and writes to Rhizome (PG, TypeDB, Qdrant).
+// IngestMarkdown receives markdown from Root and writes to Rhizome via the domain pipeline.
 func (s *Server) IngestMarkdown(ctx context.Context, req *pb.IngestRequest) (*pb.IngestResponse, error) {
-	machineID := s.idGen.GetMachineID()
-	docID := strconv.FormatInt(machineID, 10)
-
-	tocRoots := ParseTOC(req.Content)
-	tocJSON, err := TOCToJSON(tocRoots)
-	if err != nil {
-		return &pb.IngestResponse{Ok: false, ErrorMessage: err.Error()}, nil
+	domainKey := domainFromRequest(req)
+	pipeline, ok := Get(domainKey)
+	if !ok || pipeline == nil {
+		return &pb.IngestResponse{Ok: false, ErrorMessage: "no pipeline registered for domain: " + domainKey}, nil
 	}
-	flatTOC := FlattenTOC(tocRoots)
-
-	msg := &pb.RhizomeMessage{
-		Id:             machineID,
-		Title:          req.Title,
-		Content:        req.Content,
-		Toc:            tocJSON,
-		SourceMetadata: req.SourceMetadata,
-		MachineId:      machineID,
-	}
-
-	if err := s.sink.Write(ctx, msg, docID, flatTOC); err != nil {
-		return &pb.IngestResponse{
-			MachineId:     machineID,
-			DocId:         docID,
-			Ok:            false,
-			ErrorMessage:  fmt.Sprintf("sink: %v", err),
-		}, nil
-	}
-
-	return &pb.IngestResponse{
-		MachineId: machineID,
-		DocId:     docID,
-		Ok:        true,
-	}, nil
+	return pipeline.Process(ctx, req)
 }
