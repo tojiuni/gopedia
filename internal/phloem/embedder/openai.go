@@ -1,0 +1,129 @@
+package embedder
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+)
+
+// OpenAI is the OpenAI embeddings implementation.
+type OpenAI struct {
+	apiKey string
+	model  string
+	client *http.Client
+}
+
+// NewOpenAI from env OPENAI_API_KEY, OPENAI_EMBEDDING_MODEL (default text-embedding-3-small).
+func NewOpenAI() *OpenAI {
+	model := os.Getenv("OPENAI_EMBEDDING_MODEL")
+	if model == "" {
+		model = "text-embedding-3-small"
+	}
+	return &OpenAI{
+		apiKey: os.Getenv("OPENAI_API_KEY"),
+		model:  model,
+		client: &http.Client{},
+	}
+}
+
+type openAIEmbedReq struct {
+	Model string `json:"model"`
+	Input any    `json:"input"`
+}
+
+type openAIEmbedResp struct {
+	Data []struct {
+		Embedding []float32 `json:"embedding"`
+	} `json:"data"`
+}
+
+// Embed implements Embedder.
+func (e *OpenAI) Embed(ctx context.Context, text string) ([]float32, error) {
+	if e.apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY not set")
+	}
+	body := openAIEmbedReq{Model: e.model, Input: text}
+	jb, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/embeddings", bytes.NewReader(jb))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("openai embeddings: %s: %s", resp.Status, string(b))
+	}
+	var out openAIEmbedResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	if len(out.Data) == 0 {
+		return nil, fmt.Errorf("openai: no embedding in response")
+	}
+	return out.Data[0].Embedding, nil
+}
+
+// EmbedMany returns embeddings for multiple texts in one API call.
+func (e *OpenAI) EmbedMany(ctx context.Context, texts []string) ([][]float32, error) {
+	if e.apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY not set")
+	}
+	if len(texts) == 0 {
+		return nil, nil
+	}
+	if len(texts) == 1 {
+		vec, err := e.Embed(ctx, texts[0])
+		if err != nil {
+			return nil, err
+		}
+		return [][]float32{vec}, nil
+	}
+	body := openAIEmbedReq{Model: e.model, Input: texts}
+	jb, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/embeddings", bytes.NewReader(jb))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("openai embeddings: %s: %s", resp.Status, string(b))
+	}
+	var out openAIEmbedResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	if len(out.Data) != len(texts) {
+		return nil, fmt.Errorf("openai: got %d embeddings, want %d", len(out.Data), len(texts))
+	}
+	result := make([][]float32, len(texts))
+	for i := range out.Data {
+		result[i] = out.Data[i].Embedding
+	}
+	return result, nil
+}
+
+// VectorSize returns 1536 for text-embedding-3-small/ada-002, else 1536 as default.
+func (e *OpenAI) VectorSize() int {
+	if strings.Contains(e.model, "3-large") {
+		return 3072
+	}
+	return 1536
+}
