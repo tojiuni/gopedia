@@ -113,6 +113,7 @@ type IngestRequest struct {
 	Title          string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
 	Content        string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
 	SourceMetadata map[string]string      `protobuf:"bytes,3,rep,name=source_metadata,json=sourceMetadata,proto3" json:"source_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Domain         string                 `protobuf:"bytes,4,opt,name=domain,proto3" json:"domain,omitempty"` // pipeline selector: "wiki" (default), "code", "pdf", etc.
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -166,6 +167,13 @@ func (x *IngestRequest) GetSourceMetadata() map[string]string {
 		return x.SourceMetadata
 	}
 	return nil
+}
+
+func (x *IngestRequest) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
 }
 
 // IngestResponse returned by Phloem after persisting to Rhizome.
@@ -252,11 +260,12 @@ const file_rhizome_proto_rawDesc = "" +
 	"machine_id\x18\x06 \x01(\x03R\tmachineId\x1aA\n" +
 	"\x13SourceMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe2\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xfa\x01\n" +
 	"\rIngestRequest\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12^\n" +
-	"\x0fsource_metadata\x18\x03 \x03(\v25.gopedia.rhizome.v1.IngestRequest.SourceMetadataEntryR\x0esourceMetadata\x1aA\n" +
+	"\x0fsource_metadata\x18\x03 \x03(\v25.gopedia.rhizome.v1.IngestRequest.SourceMetadataEntryR\x0esourceMetadata\x12\x16\n" +
+	"\x06domain\x18\x04 \x01(\tR\x06domain\x1aA\n" +
 	"\x13SourceMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"{\n" +

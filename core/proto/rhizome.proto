@@ -20,6 +20,7 @@ message IngestRequest {
   string title = 1;
   string content = 2;
   map<string, string> source_metadata = 3;
+  string domain = 4;  // pipeline selector: "wiki" (default), "code", "pdf", etc.
 }
 
 // IngestResponse returned by Phloem after persisting to Rhizome.

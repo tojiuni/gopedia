@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rrhizome.proto\x12\x12gopedia.rhizome.v1\"\xa5\x02\n\x0eRhizomeMessage\x12\x0e\n\x02id\x18\x01 \x01(\x03R\x02id\x12\x14\n\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n\x07\x63ontent\x18\x03 \x01(\tR\x07\x63ontent\x12\x10\n\x03toc\x18\x04 \x01(\tR\x03toc\x12_\n\x0fsource_metadata\x18\x05 \x03(\x0b\x32\x36.gopedia.rhizome.v1.RhizomeMessage.SourceMetadataEntryR\x0esourceMetadata\x12\x1d\n\nmachine_id\x18\x06 \x01(\x03R\tmachineId\x1a\x41\n\x13SourceMetadataEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\"\xe2\x01\n\rIngestRequest\x12\x14\n\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n\x07\x63ontent\x18\x02 \x01(\tR\x07\x63ontent\x12^\n\x0fsource_metadata\x18\x03 \x03(\x0b\x32\x35.gopedia.rhizome.v1.IngestRequest.SourceMetadataEntryR\x0esourceMetadata\x1a\x41\n\x13SourceMetadataEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\"{\n\x0eIngestResponse\x12\x1d\n\nmachine_id\x18\x01 \x01(\x03R\tmachineId\x12\x15\n\x06\x64oc_id\x18\x02 \x01(\tR\x05\x64ocId\x12\x0e\n\x02ok\x18\x03 \x01(\x08R\x02ok\x12#\n\rerror_message\x18\x04 \x01(\tR\x0c\x65rrorMessage2a\n\x06Phloem\x12W\n\x0eIngestMarkdown\x12!.gopedia.rhizome.v1.IngestRequest\x1a\".gopedia.rhizome.v1.IngestResponseB\x1eZ\x1cgopedia/core/proto/gen/go;pbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rrhizome.proto\x12\x12gopedia.rhizome.v1\"\xa5\x02\n\x0eRhizomeMessage\x12\x0e\n\x02id\x18\x01 \x01(\x03R\x02id\x12\x14\n\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n\x07\x63ontent\x18\x03 \x01(\tR\x07\x63ontent\x12\x10\n\x03toc\x18\x04 \x01(\tR\x03toc\x12_\n\x0fsource_metadata\x18\x05 \x03(\x0b\x32\x36.gopedia.rhizome.v1.RhizomeMessage.SourceMetadataEntryR\x0esourceMetadata\x12\x1d\n\nmachine_id\x18\x06 \x01(\x03R\tmachineId\x1a\x41\n\x13SourceMetadataEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\"\xfa\x01\n\rIngestRequest\x12\x14\n\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n\x07\x63ontent\x18\x02 \x01(\tR\x07\x63ontent\x12^\n\x0fsource_metadata\x18\x03 \x03(\x0b\x32\x35.gopedia.rhizome.v1.IngestRequest.SourceMetadataEntryR\x0esourceMetadata\x12\x16\n\x06\x64omain\x18\x04 \x01(\tR\x06\x64omain\x1a\x41\n\x13SourceMetadataEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\"{\n\x0eIngestResponse\x12\x1d\n\nmachine_id\x18\x01 \x01(\x03R\tmachineId\x12\x15\n\x06\x64oc_id\x18\x02 \x01(\tR\x05\x64ocId\x12\x0e\n\x02ok\x18\x03 \x01(\x08R\x02ok\x12#\n\rerror_message\x18\x04 \x01(\tR\x0c\x65rrorMessage2a\n\x06Phloem\x12W\n\x0eIngestMarkdown\x12!.gopedia.rhizome.v1.IngestRequest\x1a\".gopedia.rhizome.v1.IngestResponseB\x1eZ\x1cgopedia/core/proto/gen/go;pbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,11 +41,11 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RHIZOMEMESSAGE_SOURCEMETADATAENTRY']._serialized_start=266
   _globals['_RHIZOMEMESSAGE_SOURCEMETADATAENTRY']._serialized_end=331
   _globals['_INGESTREQUEST']._serialized_start=334
-  _globals['_INGESTREQUEST']._serialized_end=560
+  _globals['_INGESTREQUEST']._serialized_end=584
   _globals['_INGESTREQUEST_SOURCEMETADATAENTRY']._serialized_start=266
   _globals['_INGESTREQUEST_SOURCEMETADATAENTRY']._serialized_end=331
-  _globals['_INGESTRESPONSE']._serialized_start=562
-  _globals['_INGESTRESPONSE']._serialized_end=685
-  _globals['_PHLOEM']._serialized_start=687
-  _globals['_PHLOEM']._serialized_end=784
+  _globals['_INGESTRESPONSE']._serialized_start=586
+  _globals['_INGESTRESPONSE']._serialized_end=709
+  _globals['_PHLOEM']._serialized_start=711
+  _globals['_PHLOEM']._serialized_end=808
 # @@protoc_insertion_point(module_scope)
