@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	pb "gopedia/core/proto/gen/go"
-	identityso "gopedia/core/identity-so"
+	identityso "gopedia/core/identity_so"
 )
 
 // Server implements the Phloem gRPC service.

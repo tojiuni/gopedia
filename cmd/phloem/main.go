@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	"gopedia/core/ontology-so"
+	ontologyso "gopedia/core/ontology_so"
 	pb "gopedia/core/proto/gen/go"
 	"gopedia/internal/phloem"
 )
