@@ -13,9 +13,15 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	identityso "gopedia/core/identity_so"
 	ontologyso "gopedia/core/ontology_so"
 	pb "gopedia/core/proto/gen/go"
 	"gopedia/internal/phloem"
+	"gopedia/internal/phloem/chunker"
+	"gopedia/internal/phloem/domain"
+	"gopedia/internal/phloem/embedder"
+	"gopedia/internal/phloem/sink"
+	"gopedia/internal/phloem/toc"
 )
 
 func main() {
@@ -65,13 +71,20 @@ func main() {
 		}
 	}
 
-	embedder := phloem.NewEmbedder()
-	sink := phloem.NewSink(phloem.SinkConfig{
+	emb := embedder.NewOpenAI()
+	defaultSink := sink.NewDefaultSink(sink.SinkConfig{
 		PGPool:   pgPool,
 		Qdrant:   qdrantClient,
-		Embedder: embedder,
+		Embedder: emb,
 	})
-	server := phloem.NewServer(sink)
+	idGen := identityso.NewGenerator(identityso.WorkerIDFromEnv())
+	phloem.Register(domain.Wiki, domain.NewWikiPipeline(
+		toc.MarkdownTOCParser{},
+		chunker.ByHeadingChunker{},
+		defaultSink,
+		idGen,
+	))
+	server := phloem.NewServer()
 
 	lis, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
