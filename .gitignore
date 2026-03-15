@@ -16,7 +16,7 @@ obj/
 
 # Docker
 .dockerignore
-phloem
+/phloem
 
 # OS
 .DS_Store
