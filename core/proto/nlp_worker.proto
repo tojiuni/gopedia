@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package gopedia.nlp.v1;
+
+option go_package = "gopedia/core/proto/gen/go;pb";
+
+message Entity {
+  string type = 1;
+  string text = 2;
+  int32 start = 3;
+  int32 end = 4;
+}
+
+message NLPRequest {
+  int64 version_id = 1;
+  string l1_id = 2;
+  string l2_id = 3;
+  int64 machine_id = 4;
+  string text = 5;
+}
+
+message NLPResponse {
+  repeated string sentences = 1;
+  repeated Entity entities = 2;
+}
+
+service NLPWorker {
+  rpc ProcessL2(NLPRequest) returns (NLPResponse);
+}
+
