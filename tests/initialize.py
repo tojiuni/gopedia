@@ -168,11 +168,13 @@ class DBInitializer:
         minimal_doc_schema = """
 define
   attribute doc_id, value string;
-  attribute title, value string;
+  attribute source_type, value string;
+  attribute project_id, value string;
 
   entity document,
     owns doc_id,
-    owns title;
+    owns source_type,
+    owns project_id;
 """
         try:
             with driver.transaction(

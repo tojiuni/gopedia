@@ -66,13 +66,12 @@ def main() -> int:
         print("No Qdrant hits for query:", query, file=sys.stderr)
         return 4
 
-    print("Qdrant hits (score, doc_id, section_id, toc_path):")
+    print("Qdrant hits (score, l1_id, section_id):")
     for h in hits:
         payload = h.payload or {}
-        doc_id = payload.get("doc_id", "")
+        l1_id = payload.get("l1_id", "")
         section_id = payload.get("section_id", "")
-        toc_path = payload.get("toc_path", "")
-        print(f"  score={h.score:.4f} doc_id={doc_id} section_id={section_id} toc_path={toc_path}")
+        print(f"  score={h.score:.4f} l1_id={l1_id} section_id={section_id}")
 
     # 3) TypeDB: if available, query section context (parent/child)
     typedb_host = os.environ.get("TYPEDB_HOST")
@@ -98,15 +97,13 @@ def main() -> int:
             with driver.transaction(db, TransactionType.READ) as tx:
                 query = """
 match
-$d isa document, has doc_id $doc_id, has title $title;
+$d isa document, has doc_id $doc_id;
 $c (parent: $d, child: $s) isa composition;
-$s isa section, has section_id $sid, has toc_level $lvl, has body $body;
+$s isa section, has section_id $sid, has toc_level $lvl;
 fetch {
   "doc_id": $doc_id,
-  "title": $title,
   "section_id": $sid,
-  "toc_level": $lvl,
-  "body": $body
+  "toc_level": $lvl
 };
 """
                 # TypeDB 3.x: fetch-stage query; we only care that it executes without error.
