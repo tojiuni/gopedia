@@ -3,7 +3,6 @@ package domain
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	pb "gopedia/core/proto/gen/go"
 	identityso "gopedia/core/identity_so"
@@ -24,7 +23,6 @@ type WikiPipeline struct {
 // Process implements phloem.Pipeline.
 func (p *WikiPipeline) Process(ctx context.Context, req *pb.IngestRequest) (*pb.IngestResponse, error) {
 	machineID := p.IDGen.GetMachineID()
-	docID := strconv.FormatInt(machineID, 10)
 
 	roots, err := p.Parser.Parse(req.Content)
 	if err != nil {
@@ -50,11 +48,12 @@ func (p *WikiPipeline) Process(ctx context.Context, req *pb.IngestRequest) (*pb.
 		MachineId:      machineID,
 	}
 
-	if err := p.Sink.Write(ctx, msg, docID, chunks); err != nil {
+	docID, err := p.Sink.Write(ctx, msg, chunks)
+	if err != nil {
 		return &pb.IngestResponse{
 			MachineId:    machineID,
-			DocId:       docID,
-			Ok:          false,
+			DocId:        "",
+			Ok:           false,
 			ErrorMessage: fmt.Sprintf("sink: %v", err),
 		}, nil
 	}

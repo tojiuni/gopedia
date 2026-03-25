@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 	"testing"
 
 	identityso "gopedia/core/identity_so"
@@ -27,9 +27,13 @@ type chunkWriteCall struct {
 	Chunks []types.Chunk
 }
 
-func (r *recordingChunkSink) Write(ctx context.Context, msg *pb.RhizomeMessage, docID string, chunks []types.Chunk) error {
+func (r *recordingChunkSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks []types.Chunk) (string, error) {
+	docID := ""
+	if msg != nil {
+		docID = "test-doc-uuid"
+	}
 	r.calls = append(r.calls, chunkWriteCall{Msg: msg, DocID: docID, Chunks: chunks})
-	return nil
+	return docID, nil
 }
 
 // TestIdentityMachineIDConsistency verifies that one IngestMarkdown call (via domain pipeline)
@@ -70,9 +74,8 @@ func TestIdentityMachineIDConsistency(t *testing.T) {
 	if call.Msg.MachineId != resp.MachineId {
 		t.Errorf("sink Msg.MachineId = %d, response MachineId = %d", call.Msg.MachineId, resp.MachineId)
 	}
-	expectedDocID := strconv.FormatInt(resp.MachineId, 10)
-	if call.DocID != expectedDocID {
-		t.Errorf("sink DocID = %q, expected %q", call.DocID, expectedDocID)
+	if call.DocID != "test-doc-uuid" {
+		t.Errorf("sink DocID = %q, expected test-doc-uuid", call.DocID)
 	}
 	if call.Msg.Id != call.Msg.MachineId {
 		t.Errorf("Msg.Id = %d, Msg.MachineId = %d (should match)", call.Msg.Id, call.Msg.MachineId)
@@ -162,8 +165,10 @@ func TestWikiDomainPipelineWithSampleMD(t *testing.T) {
 	if want := 3; len(call.Chunks) != want {
 		t.Errorf("expected %d chunks from sample.md TOC, got %d", want, len(call.Chunks))
 	}
-	// Sanity: first chunk should be Introduction
-	if len(call.Chunks) > 0 && call.Chunks[0].Text != "Introduction" {
-		t.Errorf("first chunk Text = %q, want Introduction", call.Chunks[0].Text)
+	// Sanity: first chunk should include the Introduction section body (not just the heading title).
+	if len(call.Chunks) > 0 {
+		if !strings.Contains(call.Chunks[0].Text, "# Introduction") {
+			t.Errorf("first chunk Text missing Introduction heading line: %q", call.Chunks[0].Text)
+		}
 	}
 }

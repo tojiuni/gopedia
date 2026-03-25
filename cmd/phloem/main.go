@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
@@ -71,10 +72,21 @@ func main() {
 		}
 	}
 
+	// Redis (optional) for Tuber keyword cache
+	var redisClient *redis.Client
+	if host := getEnv("REDIS_HOST", ""); host != "" {
+		port := getEnv("REDIS_PORT", "6379")
+		redisClient = redis.NewClient(&redis.Options{
+			Addr: host + ":" + port,
+		})
+		slog.Info("redis configured", "addr", host+":"+port)
+	}
+
 	emb := embedder.NewOpenAI()
 	defaultSink := sink.NewDefaultSink(sink.SinkConfig{
 		PGPool:   pgPool,
 		Qdrant:   qdrantClient,
+		Redis:    redisClient,
 		Embedder: emb,
 	})
 	idGen := identityso.NewGenerator(identityso.WorkerIDFromEnv())
