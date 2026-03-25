@@ -68,8 +68,8 @@ internal/phloem/
 | **chunker/heading.go** | `ByHeadingChunker` — FlattenTOC 결과를 그대로 청크로. |
 | **chunker/fixed.go** | `ByFixedSizeChunker` — 고정 문자/토큰 단위 (PDF 등). |
 | **chunker/symbol.go** | `BySymbolChunker` — 함수/클래스 단위 (선택). |
-| **sink/sink.go** | `SinkWriter` 인터페이스(`Write(ctx, msg, docID, chunks []types.Chunk) error`), `SinkConfig`. |
-| **sink/writer.go** | `DefaultSink` — PG 1행 + Qdrant L1/L2, 도메인별 collection 이름 등 옵션. |
+| **sink/sink.go** | `SinkWriter` 인터페이스(`Write(ctx, msg, chunks) (docID string, err error)`), `SinkConfig`. |
+| **sink/writer.go** | `DefaultSink` — `documents` 앵커 + `knowledge_l1`·L2/L3, `current_l1_id` 갱신, Qdrant payload는 `l1_id` 중심(`doc_id`/`machine_id` 미포함). |
 | **embedder/embedder.go** | `Embedder` 인터페이스 + OpenAI 구현. |
 | **domain/domain.go** | 도메인 이름 상수(`Wiki`, `Code`, `PDF`), 필요 시 공통 헬퍼. |
 | **domain/wiki.go** | `NewWikiPipeline(toc, chunker, sink)` 등으로 조합해 `Pipeline` 반환. |

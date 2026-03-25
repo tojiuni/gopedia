@@ -81,7 +81,7 @@ cd /morphogen/neunexus/gopedia
 - 스크립트가 `=== Transpiration E2E done (OK) ===` 로 종료 (exit code 0)
 - 로그에
   - `OK ... -> doc_id=... machine_id=...`
-  - `Qdrant hits (score, doc_id, section_id, toc_path):`
+  - `Qdrant hits (score, l1_id, section_id):`
   - `Transpiration check done.`
   가 출력됨
 
@@ -97,8 +97,8 @@ cd /morphogen/neunexus/gopedia
 Ingesting tests/fixtures/sample.md ...
 OK /app/tests/fixtures/sample.md -> doc_id=... machine_id=...
 Running verify_transpiration.py "Introduction" ...
-Qdrant hits (score, doc_id, section_id, toc_path):
-  score=0.0000 doc_id=... section_id=... toc_path=...
+Qdrant hits (score, l1_id, section_id):
+  score=0.0000 l1_id=... section_id=...
 Transpiration check done.
 === Transpiration E2E done (OK) ===
 ```
