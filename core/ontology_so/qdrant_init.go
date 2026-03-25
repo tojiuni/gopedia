@@ -14,7 +14,8 @@ import (
 const DefaultVectorSize = 1536
 
 // EnsureQdrantCollection creates the collection if it does not exist.
-// Payload fields used: doc_id, machine_id, toc_path, section_id (indexed by Phloem sink).
+// Payload fields used by Phloem DefaultSink: l1_id (primary scope/filter), l2_id, l3_id, section_id,
+// version / version_id, keyword_ids, source_type, project_id (no documents.machine_id, doc_id, level, toc_path).
 // If client is nil, returns nil without error.
 func EnsureQdrantCollection(ctx context.Context, client *qdrant.Client, collectionName string, vectorSize uint64) error {
 	if client == nil {

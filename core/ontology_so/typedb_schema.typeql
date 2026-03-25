@@ -1,18 +1,26 @@
 define
   attribute doc_id, value string;
-  attribute title, value string;
   attribute section_id, value string;
   attribute toc_level, value integer;
-  attribute body, value string;
+  attribute l3_id, value string;
+  attribute keyword_machine_id, value integer;
+  attribute source_type, value string;
+  attribute project_id, value string;
 
   entity document,
     owns doc_id,
-    owns title;
+    owns source_type,
+    owns project_id;
 
   entity section,
     owns section_id,
-    owns toc_level,
-    owns body;
+    owns toc_level;
+
+  entity sentence,
+    owns l3_id;
+
+  entity keyword,
+    owns keyword_machine_id;
 
   relation composition,
     relates parent,
@@ -21,3 +29,17 @@ define
   document plays composition:parent;
   section plays composition:child,
     plays composition:parent;
+
+  relation contains,
+    relates container,
+    relates contained;
+
+  section plays contains:container;
+  sentence plays contains:contained;
+
+  relation mentions,
+    relates source,
+    relates target;
+
+  sentence plays mentions:source;
+  keyword plays mentions:target;
