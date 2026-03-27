@@ -4,6 +4,17 @@ import (
 	"testing"
 )
 
+func TestExtractFirstMarkdownHeadingLine(t *testing.T) {
+	in := "---\ntitle: X\n---\n\n## Section\n\nBody"
+	got := extractFirstMarkdownHeadingLine(in)
+	if got != "## Section" {
+		t.Fatalf("expected ## Section, got %q", got)
+	}
+	if extractFirstMarkdownHeadingLine("no heading here") != "" {
+		t.Fatal("expected empty")
+	}
+}
+
 func TestSplitSentencesEnglish(t *testing.T) {
 	in := "# Title\n\nHello world. This is a test!\n\nLine two?\n"
 	got := splitSentencesEnglish(stripMarkdownHeadings(in))

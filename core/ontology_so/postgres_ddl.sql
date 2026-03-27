@@ -110,3 +110,9 @@ ALTER TABLE documents
   ADD COLUMN IF NOT EXISTS current_l1_id UUID REFERENCES knowledge_l1(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_documents_current_l1_id ON documents (current_l1_id) WHERE current_l1_id IS NOT NULL;
+
+-- L2 -> L3 pointer: markdown heading line stored as first L3 row (sort_order=0); see Phloem DefaultSink.
+ALTER TABLE knowledge_l2
+  ADD COLUMN IF NOT EXISTS title_id UUID REFERENCES knowledge_l3(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_l2_title_id ON knowledge_l2 (title_id) WHERE title_id IS NOT NULL;

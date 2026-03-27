@@ -186,6 +186,31 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 				return docUUIDStr, fmt.Errorf("postgres knowledge_l2 %s: %w", c.SectionID, err)
 			}
 
+			headingLine := extractFirstMarkdownHeadingLine(c.Text)
+			var titleL3ID uuid.UUID
+			hasTitleL3 := false
+			if headingLine != "" {
+				hHex := contentHashHex(headingLine)
+				err = s.pg.QueryRow(ctx,
+					`INSERT INTO knowledge_l3 (l2_id, content, content_hash, version, version_id, sort_order, parent_id, created_at, modified_at)
+					 VALUES ($1, $2, $3, 1, $4, 0, NULL, now(), now())
+					 RETURNING id`,
+					l2ID, headingLine, hHex, versionID,
+				).Scan(&titleL3ID)
+				if err != nil {
+					return docUUIDStr, fmt.Errorf("postgres knowledge_l3 title %s: %w", c.SectionID, err)
+				}
+				if _, err = s.pg.Exec(ctx, `UPDATE knowledge_l2 SET title_id = $1, modified_at = now() WHERE id = $2`, titleL3ID, l2ID); err != nil {
+					return docUUIDStr, fmt.Errorf("postgres knowledge_l2 title_id %s: %w", c.SectionID, err)
+				}
+				hasTitleL3 = true
+			}
+
+			var chainAfter *uuid.UUID
+			if hasTitleL3 {
+				chainAfter = &titleL3ID
+			}
+
 			sentences := splitSentencesEnglish(stripMarkdownHeadings(c.Text))
 			if addr := os.Getenv("GOPEDIA_NLP_WORKER_GRPC_ADDR"); addr != "" {
 				resp, err := nlpworker.New(addr).ProcessL2(ctx, &pb.NLPRequest{
@@ -201,12 +226,17 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 					sentences = resp.Sentences
 				}
 			}
-			inserted, err := insertL3Sentences(ctx, s.pg, l2ID, sentences, versionID)
+			inserted, err := insertL3Sentences(ctx, s.pg, l2ID, sentences, versionID, chainAfter)
 			if err != nil {
 				return docUUIDStr, fmt.Errorf("postgres knowledge_l3 %s: %w", c.SectionID, err)
 			}
-			if len(inserted) > 0 {
-				l3h := computeL3ChildHash(inserted)
+			forHash := make([]l3Insert, 0, len(inserted)+1)
+			if hasTitleL3 {
+				forHash = append(forHash, l3Insert{l3ID: titleL3ID, text: headingLine})
+			}
+			forHash = append(forHash, inserted...)
+			if len(forHash) > 0 {
+				l3h := computeL3ChildHash(forHash)
 				_, _ = s.pg.Exec(ctx, `UPDATE knowledge_l2 SET l3_child_hash = $1, modified_at = now() WHERE id = $2`, l3h, l2ID)
 			}
 			for _, ins := range inserted {
@@ -511,6 +541,8 @@ func ensurePipelineVersion(ctx context.Context, pg *pgxpool.Pool) (int64, error)
 
 var sentenceSplitRe = regexp.MustCompile(`[.!?]+`)
 var keywordRe = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9_-]{2,}`)
+// mdHeadingLineRe matches a single markdown heading line (same rule as chunker/heading.go).
+var mdHeadingLineRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 
 func stripMarkdownHeadings(s string) string {
 	lines := strings.Split(s, "\n")
@@ -523,6 +555,20 @@ func stripMarkdownHeadings(s string) string {
 		out = append(out, line)
 	}
 	return strings.Join(out, "\n")
+}
+
+// extractFirstMarkdownHeadingLine returns the first ATX heading line in the chunk (trimmed), e.g. "## Title".
+func extractFirstMarkdownHeadingLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		trim := strings.TrimSpace(line)
+		if trim == "" {
+			continue
+		}
+		if mdHeadingLineRe.FindStringSubmatch(trim) != nil {
+			return trim
+		}
+	}
+	return ""
 }
 
 func splitSentencesEnglish(s string) []string {
@@ -613,9 +659,14 @@ type l3Insert struct {
 	text string
 }
 
-func insertL3Sentences(ctx context.Context, pg *pgxpool.Pool, l2ID uuid.UUID, sentences []string, versionID int64) ([]l3Insert, error) {
+// insertL3Sentences stores sentence-level L3 rows. If chainAfter is non-nil, the first sentence's parent_id
+// is set to that UUID (typically the section title L3 row at sort_order=0).
+func insertL3Sentences(ctx context.Context, pg *pgxpool.Pool, l2ID uuid.UUID, sentences []string, versionID int64, chainAfter *uuid.UUID) ([]l3Insert, error) {
 	var out []l3Insert
 	var prev *uuid.UUID
+	if chainAfter != nil {
+		prev = chainAfter
+	}
 	insIdx := 0
 	for _, sent := range sentences {
 		hHex := contentHashHex(sent)

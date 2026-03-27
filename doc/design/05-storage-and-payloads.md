@@ -66,6 +66,7 @@
 | `l1_id` | `uuid` NOT NULL FK → `knowledge_l1` |
 | `parent_id` | 상위 L2 (헤더 트리) |
 | `section_id` | TOC/청크 식별자 |
+| **`title_id`** | (구현) nullable FK → `knowledge_l3(id)` — 해당 섹션의 **원문 마크다운 헤더 한 줄**(`#` …)을 담은 L3 행(`sort_order = 0`). 마크다운 전체 복원·RAG 헤더 조회에 사용. |
 | `summary` | 섹션 요약 텍스트 |
 | `summary_bin` | 요약 등 보조 바이너리(구현 정책에 따름) |
 | `summary_hash` | 섹션 본문(`Chunk.Text`) SHA-256 **바이너리** — L2 행 단위 멱등 비교에 사용 |
