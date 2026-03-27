@@ -8,3 +8,4 @@ psycopg[binary]>=3.1
 typedb-driver>=3.8.1
 qdrant-client>=1.17.0
 openai>=1.12
+pytest>=7.0

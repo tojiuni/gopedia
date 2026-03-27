@@ -7,7 +7,8 @@
 #  4) run DBInitializer.init_all() to recreate schemas/collections
 #  5) ingest sample + run transpiration verification
 #  6) direct Qdrant/TypeDB/Postgres row-count verification
-# QDRANT_COLLECTION default matches app/tests (gopedia_markdown).
+#  7) Xylem flow: markdown restore + Qdrant/PG enriched context (verify_xylem_flow.py)
+# QDRANT_COLLECTION: use .env (e.g. gopedia); fallback below matches doc/.env template.
 
 set -e
 cd "$(dirname "$0")/.."
@@ -18,6 +19,13 @@ set -a
 source ./.env
 set +a
 
+# Docker network where postgres_db, qdrant, typedb are reachable (see .env DOCKER_NETWORK_EXTERNAL).
+DOCKER_NETWORK="${DOCKER_NETWORK_EXTERNAL:-neunexus}"
+
+# Python E2E image from Dockerfile.ingestion (reset, DBInitializer, verify_*). Phloem uses GOPEDIA_PHLOEM_E2E_IMAGE.
+# This image must exist before any "docker run ... $IMAGE" — build via the "Build ingestion image" step above, or:
+#   docker build --pull -f Dockerfile.ingestion -t gopedia-ingestion:test .
+# Override registry/tag: export GOPEDIA_INGESTION_IMAGE=myregistry/gopedia-ingestion:1.2.3
 IMAGE="${GOPEDIA_INGESTION_IMAGE:-gopedia-ingestion:test}"
 PHLOEM_E2E_IMAGE="${GOPEDIA_PHLOEM_E2E_IMAGE:-gopedia-phloem:e2e}"
 PHLOEM_E2E_NAME="${GOPEDIA_PHLOEM_E2E_NAME:-phloem-e2e}"
@@ -31,12 +39,12 @@ cleanup_phloem() {
 }
 trap cleanup_phloem EXIT
 
-echo "=== [fresh] Build ingestion image ==="
-docker build -f Dockerfile.ingestion -t "$IMAGE" .
+echo "=== [fresh] Build ingestion image (current code, refresh base via --pull) ==="
+docker build --pull -f Dockerfile.ingestion -t "$IMAGE" .
 
 echo "=== [fresh] Reset stores (postgres/qdrant/typedb) ==="
 docker run --rm \
-  --network neunexus \
+  --network "$DOCKER_NETWORK" \
   --env-file .env \
   -e POSTGRES_HOST="${POSTGRES_HOST:-postgres_db}" \
   -e POSTGRES_PORT="${POSTGRES_PORT:-5432}" \
@@ -48,21 +56,21 @@ docker run --rm \
   -e TYPEDB_DATABASE="${TYPEDB_DATABASE:-gopedia}" \
   -e QDRANT_HOST="${QDRANT_HOST:-qdrant}" \
   -e QDRANT_PORT="${QDRANT_PORT:-6333}" \
-  -e QDRANT_COLLECTION="${QDRANT_COLLECTION:-gopedia_markdown}" \
+  -e QDRANT_COLLECTION="${QDRANT_COLLECTION:-gopedia}" \
   -e QDRANT_DOC_COLLECTION="${QDRANT_DOC_COLLECTION:-gopedia_document}" \
   -v "$PWD:/app" \
   -w /app \
   "$IMAGE" \
   python scripts/reset_rhizome_docker.py
 
-echo "=== [fresh] Build Phloem from current code ==="
-docker build -t "$PHLOEM_E2E_IMAGE" .
+echo "=== [fresh] Build Phloem from current code (--pull) ==="
+docker build --pull -t "$PHLOEM_E2E_IMAGE" .
 
 echo "=== [fresh] Start Phloem container ==="
 cleanup_phloem
 docker run -d \
   --name "$PHLOEM_E2E_NAME" \
-  --network neunexus \
+  --network "$DOCKER_NETWORK" \
   --env-file .env \
   -e POSTGRES_HOST="${POSTGRES_HOST:-postgres_db}" \
   -e POSTGRES_PORT="${POSTGRES_PORT:-5432}" \
@@ -72,7 +80,7 @@ docker run -d \
   -e POSTGRES_SSLMODE="${POSTGRES_SSLMODE:-disable}" \
   -e QDRANT_HOST="${QDRANT_HOST:-qdrant}" \
   -e QDRANT_GRPC_PORT="${QDRANT_GRPC_PORT:-6334}" \
-  -e QDRANT_COLLECTION="${QDRANT_COLLECTION:-gopedia_markdown}" \
+  -e QDRANT_COLLECTION="${QDRANT_COLLECTION:-gopedia}" \
   -e OPENAI_API_KEY="${OPENAI_API_KEY}" \
   -e OPENAI_EMBEDDING_MODEL="${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}" \
   "$PHLOEM_E2E_IMAGE"
@@ -81,7 +89,7 @@ sleep 2
 
 echo "=== [fresh] Initialize DBs/collections/schemas ==="
 docker run --rm \
-  --network neunexus \
+  --network "$DOCKER_NETWORK" \
   --env-file .env \
   -e POSTGRES_HOST="${POSTGRES_HOST:-postgres_db}" \
   -e TYPEDB_HOST="${TYPEDB_HOST:-typedb}" \
@@ -94,7 +102,7 @@ docker run --rm \
 
 echo "=== [fresh] Run ingestion + transpiration ==="
 docker run --rm \
-  --network neunexus \
+  --network "$DOCKER_NETWORK" \
   --env-file .env \
   -e POSTGRES_HOST="${POSTGRES_HOST:-postgres_db}" \
   -e TYPEDB_HOST="${TYPEDB_HOST:-typedb}" \
@@ -107,11 +115,11 @@ docker run --rm \
 
 echo "=== [fresh] Verify Qdrant payload ==="
 docker run --rm \
-  --network neunexus \
+  --network "$DOCKER_NETWORK" \
   --env-file .env \
   -e QDRANT_HOST="${QDRANT_HOST:-qdrant}" \
   -e QDRANT_PORT="${QDRANT_PORT:-6333}" \
-  -e QDRANT_COLLECTION="${QDRANT_COLLECTION:-gopedia_markdown}" \
+  -e QDRANT_COLLECTION="${QDRANT_COLLECTION:-gopedia}" \
   -e QDRANT_DOC_COLLECTION="${QDRANT_DOC_COLLECTION:-gopedia_document}" \
   -v "$PWD:/app" \
   -w /app \
@@ -120,7 +128,7 @@ docker run --rm \
 
 echo "=== [fresh] Verify TypeDB graph connectivity ==="
 docker run --rm \
-  --network neunexus \
+  --network "$DOCKER_NETWORK" \
   --env-file .env \
   -e TYPEDB_HOST="${TYPEDB_HOST:-typedb}" \
   -e TYPEDB_PORT="${TYPEDB_PORT:-1729}" \
@@ -132,7 +140,7 @@ docker run --rm \
 
 echo "=== [fresh] Verify Postgres row counts ==="
 docker run --rm \
-  --network neunexus \
+  --network "$DOCKER_NETWORK" \
   --env-file .env \
   -e POSTGRES_HOST="${POSTGRES_HOST:-postgres_db}" \
   -e POSTGRES_PORT="${POSTGRES_PORT:-5432}" \
@@ -143,6 +151,29 @@ docker run --rm \
   -w /app \
   "$IMAGE" \
   python scripts/print_postgres_counts.py
+
+echo "=== [fresh] Verify Xylem Flow (markdown restore + Qdrant/PG RAG context) ==="
+# 이 단계만 로컬에서 돌리려면: ./scripts/run_verify_xylem_docker.sh [keyword] (이미지·네트워크·.env 필요)
+# L3 컬렉션은 DBInitializer가 만든 단일 무명 벡터를 쓴다. .env의 QDRANT_VECTOR_NAME(dense-gopedia 등)은
+# 문서용 컬렉션(QDRANT_DOC_*)용이므로 여기서는 비워 query_points에 using을 넣지 않는다.
+docker run --rm \
+  --network "$DOCKER_NETWORK" \
+  --env-file .env \
+  -e POSTGRES_HOST="${POSTGRES_HOST:-postgres_db}" \
+  -e POSTGRES_PORT="${POSTGRES_PORT:-5432}" \
+  -e POSTGRES_USER="${POSTGRES_USER:-admin_gopedia}" \
+  -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+  -e POSTGRES_DB="${POSTGRES_DB:-gopedia}" \
+  -e QDRANT_HOST="${QDRANT_HOST:-qdrant}" \
+  -e QDRANT_PORT="${QDRANT_PORT:-6333}" \
+  -e QDRANT_COLLECTION="${QDRANT_COLLECTION:-gopedia}" \
+  -e QDRANT_VECTOR_NAME= \
+  -e OPENAI_API_KEY="${OPENAI_API_KEY}" \
+  -e OPENAI_EMBEDDING_MODEL="${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}" \
+  -v "$PWD:/app" \
+  -w /app \
+  "$IMAGE" \
+  python scripts/verify_xylem_flow.py "$KEYWORD"
 
 echo "=== [fresh] Done ==="
 
