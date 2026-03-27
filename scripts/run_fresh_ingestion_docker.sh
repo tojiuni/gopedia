@@ -152,6 +152,20 @@ docker run --rm \
   "$IMAGE" \
   python scripts/print_postgres_counts.py
 
+echo "=== [fresh] Verify projects table + documents.project_id FK ==="
+docker run --rm \
+  --network "$DOCKER_NETWORK" \
+  --env-file .env \
+  -e POSTGRES_HOST="${POSTGRES_HOST:-postgres_db}" \
+  -e POSTGRES_PORT="${POSTGRES_PORT:-5432}" \
+  -e POSTGRES_USER="${POSTGRES_USER:-admin_gopedia}" \
+  -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+  -e POSTGRES_DB="${POSTGRES_DB:-gopedia}" \
+  -v "$PWD:/app" \
+  -w /app \
+  "$IMAGE" \
+  python scripts/verify_projects_after_ingest.py
+
 echo "=== [fresh] Verify Xylem Flow (markdown restore + Qdrant/PG RAG context) ==="
 # 이 단계만 로컬에서 돌리려면: ./scripts/run_verify_xylem_docker.sh [keyword] (이미지·네트워크·.env 필요)
 # L3 컬렉션은 DBInitializer가 만든 단일 무명 벡터를 쓴다. .env의 QDRANT_VECTOR_NAME(dense-gopedia 등)은

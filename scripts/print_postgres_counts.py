@@ -19,7 +19,15 @@ def main() -> int:
         f"dbname={os.environ.get('POSTGRES_DB','gopedia')} sslmode=disable"
     )
     cur = c.cursor()
-    for t in ["pipeline_version", "documents", "knowledge_l1", "knowledge_l2", "knowledge_l3", "keyword_so"]:
+    for t in [
+        "projects",
+        "pipeline_version",
+        "documents",
+        "knowledge_l1",
+        "knowledge_l2",
+        "knowledge_l3",
+        "keyword_so",
+    ]:
         cur.execute("SELECT COUNT(*) FROM " + t)
         print(t, cur.fetchone()[0], flush=True)
     cur.close()

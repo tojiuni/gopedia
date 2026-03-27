@@ -7,7 +7,7 @@ Intended use:
   - uses environment variables from .env (or overrides passed by docker -e)
 
 What it does:
-  - PostgreSQL: DROP knowledge_l1/2/3, keyword_so, documents, pipeline_version (if exists)
+  - PostgreSQL: DROP knowledge_l1/2/3, keyword_so, documents, projects, pipeline_version (if exists)
   - Qdrant: delete QDRANT_COLLECTION and QDRANT_DOC_COLLECTION (if exists)
   - TypeDB: delete TYPEDB_DATABASE (if exists)
 
@@ -43,7 +43,15 @@ def reset_postgres() -> None:
     )
     print(f"[postgres] connect: {host}:{port} db={db}")
 
-    tables = ["keyword_so", "knowledge_l3", "knowledge_l2", "knowledge_l1", "documents", "pipeline_version"]
+    tables = [
+        "keyword_so",
+        "knowledge_l3",
+        "knowledge_l2",
+        "knowledge_l1",
+        "documents",
+        "projects",
+        "pipeline_version",
+    ]
 
     with psycopg.connect(conninfo) as conn:
         cur = conn.cursor()
