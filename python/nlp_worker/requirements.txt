@@ -1,0 +1,4 @@
+# NLP worker service (gRPC). Install alongside repo root for shared proto imports.
+grpcio>=1.60
+kss>=4.5.0
+pysbd>=0.3.4

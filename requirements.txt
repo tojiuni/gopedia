@@ -11,3 +11,4 @@ openai>=1.12
 tiktoken>=0.7.0
 pytest>=7.0
 # Optional (Cross-Encoder rerank): pip install 'sentence-transformers>=3.0.0' — also installed in Dockerfile.ingestion.
+# NLP L3 sentence worker: pip install -r python/nlp_worker/requirements.txt

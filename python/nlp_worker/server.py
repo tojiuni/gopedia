@@ -1,31 +1,32 @@
 from __future__ import annotations
 
 import os
-import re
+import pathlib
+import sys
 from concurrent import futures
+
+# Repo root (for core.proto) and this dir (for mask/split_text) when launched as a script.
+_nlp_dir = pathlib.Path(__file__).resolve().parent
+_repo_root = _nlp_dir.parent.parent
+for p in (_repo_root, _nlp_dir):
+    s = str(p)
+    if s not in sys.path:
+        sys.path.insert(0, s)
 
 import grpc
 
 from core.proto.gen.python import nlp_worker_pb2, nlp_worker_pb2_grpc
 
-
-_SPLIT_RE = re.compile(r"[.!?]+")
-
-
-def _split_sentences(text: str) -> list[str]:
-    parts = _SPLIT_RE.split(text.replace("\r\n", "\n").replace("\r", "\n"))
-    out: list[str] = []
-    for p in parts:
-        p = p.strip()
-        if p:
-            out.append(p)
-    return out
+from mask import mask_for_sentence_split, unmask_sentences
+from split_text import split_sentences_language_aware
 
 
 class NLPWorkerServicer(nlp_worker_pb2_grpc.NLPWorkerServicer):
     def ProcessL2(self, request: nlp_worker_pb2.NLPRequest, context: grpc.ServicerContext):
-        # Minimal v1: English-only sentence split; entity extraction added later.
-        sents = _split_sentences(request.text or "")
+        raw = request.text or ""
+        masked, replacements = mask_for_sentence_split(raw)
+        sents_masked = split_sentences_language_aware(masked)
+        sents = unmask_sentences(sents_masked, replacements)
         return nlp_worker_pb2.NLPResponse(sentences=sents, entities=[])
 
 
@@ -40,4 +41,3 @@ def serve() -> None:
 
 if __name__ == "__main__":
     serve()
-
