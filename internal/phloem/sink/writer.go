@@ -104,7 +104,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 		}
 
 		metaJSON, _ := json.Marshal(msg.SourceMetadata)
-		projectID := ingestProjectIDPtr()
+		projectID := ingestProjectIDPtrFromMetadata(msg.SourceMetadata)
 		var docUUID uuid.UUID
 		err = s.pg.QueryRow(ctx,
 			`INSERT INTO documents (machine_id, title, source_metadata, version, version_id, created_at, project_id, source_type)
@@ -262,6 +262,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 	}
 
 	if s.qdrant != nil && s.embed != nil {
+		qdrantProjectID := projectIDForPayloadFromMetadata(msg.SourceMetadata)
 		l1PayloadID := docUUIDStr
 		if headL1ID != uuid.Nil {
 			l1PayloadID = headL1ID.String()
@@ -277,7 +278,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			slog.Warn("embed L1 failed, skipping Qdrant L1", "err", err)
 		} else {
 			l1PointID := l1PayloadID + "_l1"
-			if err := s.upsertPoint(ctx, collection, l1PointID, vec, l1PayloadID, version, sourceType, projectIDForPayload()); err != nil {
+			if err := s.upsertPoint(ctx, collection, l1PointID, vec, l1PayloadID, version, sourceType, qdrantProjectID); err != nil {
 				return docUUIDStr, fmt.Errorf("qdrant L1: %w", err)
 			}
 		}
@@ -289,7 +290,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 				continue
 			}
 			pointID := fmt.Sprintf("%s_l3_%s", docUUIDStr, item.l3ID.String())
-			storedID, err := s.upsertL3Point(ctx, collection, pointID, vec, item)
+			storedID, err := s.upsertL3Point(ctx, collection, pointID, vec, item, qdrantProjectID)
 			if err != nil {
 				return docUUIDStr, fmt.Errorf("qdrant L3 %s: %w", item.l3ID, err)
 			}
@@ -322,11 +323,10 @@ func (s *DefaultSink) upsertPoint(ctx context.Context, collection, pointID strin
 	return err
 }
 
-func (s *DefaultSink) upsertL3Point(ctx context.Context, collection, pointID string, vector []float32, item l3ToEmbed) (string, error) {
+func (s *DefaultSink) upsertL3Point(ctx context.Context, collection, pointID string, vector []float32, item l3ToEmbed, projectID int64) (string, error) {
 	qid := qdrantUUID(pointID)
 	keywordIDs := s.tuberKeywordIDs(ctx, item.text)
 	st := sourceTypeForPayload()
-	pid := projectIDForPayload()
 	payload := map[string]interface{}{
 		"l1_id":       item.l1ID.String(),
 		"l2_id":       item.l2ID.String(),
@@ -335,7 +335,7 @@ func (s *DefaultSink) upsertL3Point(ctx context.Context, collection, pointID str
 		"version_id":  item.versionID,
 		"keyword_ids": keywordIDs,
 		"source_type": st,
-		"project_id":  pid,
+		"project_id":  projectID,
 	}
 	points := []*qdrant.PointStruct{{
 		Id:      qdrant.NewID(qid),
@@ -454,7 +454,37 @@ func sourceTypeForPayload() string {
 	return getEnv("GOPEDIA_SOURCE_TYPE", "md")
 }
 
-func projectIDForPayload() int64 {
+// projectIDFromMetadata parses source_metadata["project_id"] when set (RegisterProject / Root).
+func projectIDFromMetadata(meta map[string]string) (int64, bool) {
+	if meta == nil {
+		return 0, false
+	}
+	s := strings.TrimSpace(meta["project_id"])
+	if s == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || v <= 0 {
+		return 0, false
+	}
+	return v, true
+}
+
+func projectIDForPayloadFromMetadata(meta map[string]string) int64 {
+	if v, ok := projectIDFromMetadata(meta); ok {
+		return v
+	}
+	return projectIDForPayloadFromEnv()
+}
+
+func ingestProjectIDPtrFromMetadata(meta map[string]string) interface{} {
+	if v, ok := projectIDFromMetadata(meta); ok {
+		return v
+	}
+	return ingestProjectIDPtrFromEnv()
+}
+
+func projectIDForPayloadFromEnv() int64 {
 	s := os.Getenv("GOPEDIA_PROJECT_ID")
 	if s == "" {
 		return 0
@@ -466,7 +496,7 @@ func projectIDForPayload() int64 {
 	return v
 }
 
-func ingestProjectIDPtr() interface{} {
+func ingestProjectIDPtrFromEnv() interface{} {
 	s := os.Getenv("GOPEDIA_PROJECT_ID")
 	if s == "" {
 		return nil

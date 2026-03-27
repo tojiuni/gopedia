@@ -13,6 +13,21 @@ CREATE TABLE IF NOT EXISTS pipeline_version (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Ingestion scope: one row per filesystem root / workspace (RegisterProject).
+-- machine_id: deterministic 64-bit identity for the project (same namespace style as documents.machine_id / keyword_so).
+CREATE TABLE IF NOT EXISTS projects (
+  id BIGSERIAL PRIMARY KEY,
+  machine_id BIGINT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  root_path TEXT NOT NULL UNIQUE,
+  description TEXT,
+  source_metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  modified_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_root_path ON projects (root_path);
+
 -- Document root: one row per ingest; id is the canonical doc UUID (IngestResponse.doc_id).
 CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -21,7 +36,7 @@ CREATE TABLE IF NOT EXISTS documents (
   source_metadata JSONB DEFAULT '{}',
   version INT NOT NULL DEFAULT 1,
   version_id BIGINT REFERENCES pipeline_version(id),
-  project_id BIGINT,
+  project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
   source_type TEXT NOT NULL DEFAULT 'md',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -35,7 +50,7 @@ CREATE TABLE IF NOT EXISTS knowledge_l1 (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   parent_id UUID REFERENCES knowledge_l1(id) ON DELETE SET NULL,
-  project_id BIGINT,
+  project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
   source_type TEXT NOT NULL DEFAULT 'md',
   title TEXT NOT NULL DEFAULT '',
   source_metadata JSONB NOT NULL DEFAULT '{}',

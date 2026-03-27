@@ -245,6 +245,128 @@ func (x *IngestResponse) GetErrorMessage() string {
 	return ""
 }
 
+// RegisterProjectRequest upserts a project row by root_path (filesystem scope for ingestion).
+type RegisterProjectRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Name     string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	RootPath string                 `protobuf:"bytes,2,opt,name=root_path,json=rootPath,proto3" json:"root_path,omitempty"`
+	Metadata map[string]string      `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// If zero, Phloem derives a stable machine_id from root_path. If set, that value is stored on first insert.
+	MachineId     int64 `protobuf:"varint,4,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterProjectRequest) Reset() {
+	*x = RegisterProjectRequest{}
+	mi := &file_rhizome_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterProjectRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterProjectRequest) ProtoMessage() {}
+
+func (x *RegisterProjectRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rhizome_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterProjectRequest.ProtoReflect.Descriptor instead.
+func (*RegisterProjectRequest) Descriptor() ([]byte, []int) {
+	return file_rhizome_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *RegisterProjectRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RegisterProjectRequest) GetRootPath() string {
+	if x != nil {
+		return x.RootPath
+	}
+	return ""
+}
+
+func (x *RegisterProjectRequest) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *RegisterProjectRequest) GetMachineId() int64 {
+	if x != nil {
+		return x.MachineId
+	}
+	return 0
+}
+
+type RegisterProjectResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     int64                  `protobuf:"varint,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	MachineId     int64                  `protobuf:"varint,2,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterProjectResponse) Reset() {
+	*x = RegisterProjectResponse{}
+	mi := &file_rhizome_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterProjectResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterProjectResponse) ProtoMessage() {}
+
+func (x *RegisterProjectResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rhizome_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterProjectResponse.ProtoReflect.Descriptor instead.
+func (*RegisterProjectResponse) Descriptor() ([]byte, []int) {
+	return file_rhizome_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RegisterProjectResponse) GetProjectId() int64 {
+	if x != nil {
+		return x.ProjectId
+	}
+	return 0
+}
+
+func (x *RegisterProjectResponse) GetMachineId() int64 {
+	if x != nil {
+		return x.MachineId
+	}
+	return 0
+}
+
 var File_rhizome_proto protoreflect.FileDescriptor
 
 const file_rhizome_proto_rawDesc = "" +
@@ -274,9 +396,24 @@ const file_rhizome_proto_rawDesc = "" +
 	"machine_id\x18\x01 \x01(\x03R\tmachineId\x12\x15\n" +
 	"\x06doc_id\x18\x02 \x01(\tR\x05docId\x12\x0e\n" +
 	"\x02ok\x18\x03 \x01(\bR\x02ok\x12#\n" +
-	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage2a\n" +
+	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\"\xfb\x01\n" +
+	"\x16RegisterProjectRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
+	"\troot_path\x18\x02 \x01(\tR\brootPath\x12T\n" +
+	"\bmetadata\x18\x03 \x03(\v28.gopedia.rhizome.v1.RegisterProjectRequest.MetadataEntryR\bmetadata\x12\x1d\n" +
+	"\n" +
+	"machine_id\x18\x04 \x01(\x03R\tmachineId\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"W\n" +
+	"\x17RegisterProjectResponse\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\x03R\tprojectId\x12\x1d\n" +
+	"\n" +
+	"machine_id\x18\x02 \x01(\x03R\tmachineId2\xcd\x01\n" +
 	"\x06Phloem\x12W\n" +
-	"\x0eIngestMarkdown\x12!.gopedia.rhizome.v1.IngestRequest\x1a\".gopedia.rhizome.v1.IngestResponseB\x1eZ\x1cgopedia/core/proto/gen/go;pbb\x06proto3"
+	"\x0eIngestMarkdown\x12!.gopedia.rhizome.v1.IngestRequest\x1a\".gopedia.rhizome.v1.IngestResponse\x12j\n" +
+	"\x0fRegisterProject\x12*.gopedia.rhizome.v1.RegisterProjectRequest\x1a+.gopedia.rhizome.v1.RegisterProjectResponseB\x1eZ\x1cgopedia/core/proto/gen/go;pbb\x06proto3"
 
 var (
 	file_rhizome_proto_rawDescOnce sync.Once
@@ -290,24 +427,30 @@ func file_rhizome_proto_rawDescGZIP() []byte {
 	return file_rhizome_proto_rawDescData
 }
 
-var file_rhizome_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_rhizome_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_rhizome_proto_goTypes = []any{
-	(*RhizomeMessage)(nil), // 0: gopedia.rhizome.v1.RhizomeMessage
-	(*IngestRequest)(nil),  // 1: gopedia.rhizome.v1.IngestRequest
-	(*IngestResponse)(nil), // 2: gopedia.rhizome.v1.IngestResponse
-	nil,                    // 3: gopedia.rhizome.v1.RhizomeMessage.SourceMetadataEntry
-	nil,                    // 4: gopedia.rhizome.v1.IngestRequest.SourceMetadataEntry
+	(*RhizomeMessage)(nil),          // 0: gopedia.rhizome.v1.RhizomeMessage
+	(*IngestRequest)(nil),           // 1: gopedia.rhizome.v1.IngestRequest
+	(*IngestResponse)(nil),          // 2: gopedia.rhizome.v1.IngestResponse
+	(*RegisterProjectRequest)(nil),  // 3: gopedia.rhizome.v1.RegisterProjectRequest
+	(*RegisterProjectResponse)(nil), // 4: gopedia.rhizome.v1.RegisterProjectResponse
+	nil,                             // 5: gopedia.rhizome.v1.RhizomeMessage.SourceMetadataEntry
+	nil,                             // 6: gopedia.rhizome.v1.IngestRequest.SourceMetadataEntry
+	nil,                             // 7: gopedia.rhizome.v1.RegisterProjectRequest.MetadataEntry
 }
 var file_rhizome_proto_depIdxs = []int32{
-	3, // 0: gopedia.rhizome.v1.RhizomeMessage.source_metadata:type_name -> gopedia.rhizome.v1.RhizomeMessage.SourceMetadataEntry
-	4, // 1: gopedia.rhizome.v1.IngestRequest.source_metadata:type_name -> gopedia.rhizome.v1.IngestRequest.SourceMetadataEntry
-	1, // 2: gopedia.rhizome.v1.Phloem.IngestMarkdown:input_type -> gopedia.rhizome.v1.IngestRequest
-	2, // 3: gopedia.rhizome.v1.Phloem.IngestMarkdown:output_type -> gopedia.rhizome.v1.IngestResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5, // 0: gopedia.rhizome.v1.RhizomeMessage.source_metadata:type_name -> gopedia.rhizome.v1.RhizomeMessage.SourceMetadataEntry
+	6, // 1: gopedia.rhizome.v1.IngestRequest.source_metadata:type_name -> gopedia.rhizome.v1.IngestRequest.SourceMetadataEntry
+	7, // 2: gopedia.rhizome.v1.RegisterProjectRequest.metadata:type_name -> gopedia.rhizome.v1.RegisterProjectRequest.MetadataEntry
+	1, // 3: gopedia.rhizome.v1.Phloem.IngestMarkdown:input_type -> gopedia.rhizome.v1.IngestRequest
+	3, // 4: gopedia.rhizome.v1.Phloem.RegisterProject:input_type -> gopedia.rhizome.v1.RegisterProjectRequest
+	2, // 5: gopedia.rhizome.v1.Phloem.IngestMarkdown:output_type -> gopedia.rhizome.v1.IngestResponse
+	4, // 6: gopedia.rhizome.v1.Phloem.RegisterProject:output_type -> gopedia.rhizome.v1.RegisterProjectResponse
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_rhizome_proto_init() }
@@ -321,7 +464,7 @@ func file_rhizome_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rhizome_proto_rawDesc), len(file_rhizome_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

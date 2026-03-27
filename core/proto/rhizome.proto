@@ -31,7 +31,22 @@ message IngestResponse {
   string error_message = 4;
 }
 
+// RegisterProjectRequest upserts a project row by root_path (filesystem scope for ingestion).
+message RegisterProjectRequest {
+  string name = 1;
+  string root_path = 2;
+  map<string, string> metadata = 3;
+  // If zero, Phloem derives a stable machine_id from root_path. If set, that value is stored on first insert.
+  int64 machine_id = 4;
+}
+
+message RegisterProjectResponse {
+  int64 project_id = 1;
+  int64 machine_id = 2;
+}
+
 // Phloem service: ingests markdown (and later other formats) into Rhizome.
 service Phloem {
   rpc IngestMarkdown(IngestRequest) returns (IngestResponse);
+  rpc RegisterProject(RegisterProjectRequest) returns (RegisterProjectResponse);
 }

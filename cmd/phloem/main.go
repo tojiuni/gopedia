@@ -96,7 +96,7 @@ func main() {
 		defaultSink,
 		idGen,
 	))
-	server := phloem.NewServer()
+	server := phloem.NewServer(pgPool)
 
 	lis, err := net.Listen("tcp", grpcAddr)
 	if err != nil {

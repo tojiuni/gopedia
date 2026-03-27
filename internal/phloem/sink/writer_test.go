@@ -32,3 +32,23 @@ func TestSplitSentencesEnglish(t *testing.T) {
 	}
 }
 
+func TestProjectIDFromMetadata(t *testing.T) {
+	v, ok := projectIDFromMetadata(map[string]string{"project_id": "42"})
+	if !ok || v != 42 {
+		t.Fatalf("metadata project_id: got %d ok=%v", v, ok)
+	}
+	if v, ok := projectIDFromMetadata(nil); ok || v != 0 {
+		t.Fatalf("nil meta: got %d ok=%v", v, ok)
+	}
+	if v, ok := projectIDFromMetadata(map[string]string{"project_id": "x"}); ok {
+		t.Fatalf("invalid int should not ok, got %d", v)
+	}
+	t.Setenv("GOPEDIA_PROJECT_ID", "7")
+	if got := projectIDForPayloadFromMetadata(nil); got != 7 {
+		t.Fatalf("env fallback: got %d", got)
+	}
+	if got := projectIDForPayloadFromMetadata(map[string]string{"project_id": "3"}); got != 3 {
+		t.Fatalf("metadata wins over env: got %d", got)
+	}
+}
+

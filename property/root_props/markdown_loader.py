@@ -52,6 +52,37 @@ def collect_markdown_paths(path: str | Path) -> list[Path]:
     return list(path.rglob("*.md"))
 
 
+def register_project(
+    channel: grpc.Channel,
+    root_path: str,
+    *,
+    name: str = "",
+    metadata: dict[str, str] | None = None,
+    machine_id: int = 0,
+) -> tuple[int | None, int | None]:
+    """
+    Upsert a projects row by root_path via Phloem.
+    Returns (project_id, project_machine_id); (None, None) if the call fails.
+    """
+    stub = rhizome_pb2_grpc.PhloemStub(channel)
+    req = rhizome_pb2.RegisterProjectRequest(
+        name=name or "",
+        root_path=root_path,
+        metadata=metadata or {},
+        machine_id=machine_id,
+    )
+    try:
+        resp = stub.RegisterProject(req)
+        if resp.project_id:
+            return int(resp.project_id), int(resp.machine_id)
+    except grpc.RpcError as e:
+        print(
+            f"RegisterProject failed (ingest continues; use GOPEDIA_PROJECT_ID if needed): {e}",
+            file=sys.stderr,
+        )
+    return None, None
+
+
 def call_phloem_ingest(
     channel: grpc.Channel,
     title: str,

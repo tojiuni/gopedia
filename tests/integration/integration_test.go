@@ -95,6 +95,15 @@ func TestPostgresConnect(t *testing.T) {
 	if !exists {
 		t.Fatal("documents table not found (run core/ontology_so/postgres_ddl.sql)")
 	}
+	err = pool.QueryRow(ctx,
+		"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'projects')",
+	).Scan(&exists)
+	if err != nil {
+		t.Fatalf("Postgres projects table query: %v", err)
+	}
+	if !exists {
+		t.Fatal("projects table not found (run core/ontology_so/postgres_ddl.sql)")
+	}
 }
 
 func TestPhloemGRPCReachable(t *testing.T) {

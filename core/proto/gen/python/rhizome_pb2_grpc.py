@@ -20,6 +20,11 @@ class PhloemStub(object):
                 request_serializer=rhizome__pb2.IngestRequest.SerializeToString,
                 response_deserializer=rhizome__pb2.IngestResponse.FromString,
                 _registered_method=True)
+        self.RegisterProject = channel.unary_unary(
+                '/gopedia.rhizome.v1.Phloem/RegisterProject',
+                request_serializer=rhizome__pb2.RegisterProjectRequest.SerializeToString,
+                response_deserializer=rhizome__pb2.RegisterProjectResponse.FromString,
+                _registered_method=True)
 
 
 class PhloemServicer(object):
@@ -32,6 +37,12 @@ class PhloemServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RegisterProject(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PhloemServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -39,6 +50,11 @@ def add_PhloemServicer_to_server(servicer, server):
                     servicer.IngestMarkdown,
                     request_deserializer=rhizome__pb2.IngestRequest.FromString,
                     response_serializer=rhizome__pb2.IngestResponse.SerializeToString,
+            ),
+            'RegisterProject': grpc.unary_unary_rpc_method_handler(
+                    servicer.RegisterProject,
+                    request_deserializer=rhizome__pb2.RegisterProjectRequest.FromString,
+                    response_serializer=rhizome__pb2.RegisterProjectResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -69,6 +85,33 @@ class Phloem(object):
             '/gopedia.rhizome.v1.Phloem/IngestMarkdown',
             rhizome__pb2.IngestRequest.SerializeToString,
             rhizome__pb2.IngestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RegisterProject(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gopedia.rhizome.v1.Phloem/RegisterProject',
+            rhizome__pb2.RegisterProjectRequest.SerializeToString,
+            rhizome__pb2.RegisterProjectResponse.FromString,
             options,
             channel_credentials,
             insecure,

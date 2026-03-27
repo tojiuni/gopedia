@@ -47,7 +47,7 @@ func TestIdentityMachineIDConsistency(t *testing.T) {
 		rec,
 		idGen,
 	))
-	srv := phloem.NewServer()
+	srv := phloem.NewServer(nil)
 
 	ctx := context.Background()
 	req := &pb.IngestRequest{
@@ -92,7 +92,7 @@ func TestIngestMarkdownDomainRouting(t *testing.T) {
 		rec,
 		idGen,
 	))
-	srv := phloem.NewServer()
+	srv := phloem.NewServer(nil)
 	ctx := context.Background()
 
 	// Explicit domain "wiki" uses registered pipeline.
@@ -135,7 +135,7 @@ func TestWikiDomainPipelineWithSampleMD(t *testing.T) {
 		rec,
 		idGen,
 	))
-	srv := phloem.NewServer()
+	srv := phloem.NewServer(nil)
 	ctx := context.Background()
 
 	req := &pb.IngestRequest{

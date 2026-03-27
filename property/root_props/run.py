@@ -21,6 +21,7 @@ from property.root_props.markdown_loader import (
     call_phloem_ingest,
     collect_markdown_paths,
     load_markdown,
+    register_project,
 )
 try:
     from core.ontology_so import sync_document_to_typedb
@@ -41,11 +42,26 @@ def main() -> None:
         sys.exit(1)
 
     addr = os.environ.get("GOPEDIA_PHLOEM_GRPC_ADDR", "localhost:50051")
+    project_root = path if path.is_dir() else path.parent
+
     with grpc.insecure_channel(addr) as channel:
+        project_id, project_machine_id = register_project(
+            channel,
+            str(project_root),
+            name=project_root.name,
+        )
+        project_id_str = str(project_id) if project_id else ""
+        project_mid_str = str(project_machine_id) if project_machine_id else ""
+
         for md_path in collect_markdown_paths(path):
             content, title, source_metadata = load_markdown(md_path)
+            meta = dict(source_metadata)
+            if project_id_str:
+                meta["project_id"] = project_id_str
+            if project_mid_str:
+                meta["project_machine_id"] = project_mid_str
             ok, doc_id, machine_id = call_phloem_ingest(
-                channel, title, content, source_metadata
+                channel, title, content, meta
             )
             if ok:
                 print(f"OK {md_path} -> doc_id={doc_id} machine_id={machine_id}")

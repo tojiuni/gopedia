@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Phloem_IngestMarkdown_FullMethodName = "/gopedia.rhizome.v1.Phloem/IngestMarkdown"
+	Phloem_IngestMarkdown_FullMethodName  = "/gopedia.rhizome.v1.Phloem/IngestMarkdown"
+	Phloem_RegisterProject_FullMethodName = "/gopedia.rhizome.v1.Phloem/RegisterProject"
 )
 
 // PhloemClient is the client API for Phloem service.
@@ -29,6 +30,7 @@ const (
 // Phloem service: ingests markdown (and later other formats) into Rhizome.
 type PhloemClient interface {
 	IngestMarkdown(ctx context.Context, in *IngestRequest, opts ...grpc.CallOption) (*IngestResponse, error)
+	RegisterProject(ctx context.Context, in *RegisterProjectRequest, opts ...grpc.CallOption) (*RegisterProjectResponse, error)
 }
 
 type phloemClient struct {
@@ -49,6 +51,16 @@ func (c *phloemClient) IngestMarkdown(ctx context.Context, in *IngestRequest, op
 	return out, nil
 }
 
+func (c *phloemClient) RegisterProject(ctx context.Context, in *RegisterProjectRequest, opts ...grpc.CallOption) (*RegisterProjectResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterProjectResponse)
+	err := c.cc.Invoke(ctx, Phloem_RegisterProject_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PhloemServer is the server API for Phloem service.
 // All implementations must embed UnimplementedPhloemServer
 // for forward compatibility.
@@ -56,6 +68,7 @@ func (c *phloemClient) IngestMarkdown(ctx context.Context, in *IngestRequest, op
 // Phloem service: ingests markdown (and later other formats) into Rhizome.
 type PhloemServer interface {
 	IngestMarkdown(context.Context, *IngestRequest) (*IngestResponse, error)
+	RegisterProject(context.Context, *RegisterProjectRequest) (*RegisterProjectResponse, error)
 	mustEmbedUnimplementedPhloemServer()
 }
 
@@ -68,6 +81,9 @@ type UnimplementedPhloemServer struct{}
 
 func (UnimplementedPhloemServer) IngestMarkdown(context.Context, *IngestRequest) (*IngestResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method IngestMarkdown not implemented")
+}
+func (UnimplementedPhloemServer) RegisterProject(context.Context, *RegisterProjectRequest) (*RegisterProjectResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegisterProject not implemented")
 }
 func (UnimplementedPhloemServer) mustEmbedUnimplementedPhloemServer() {}
 func (UnimplementedPhloemServer) testEmbeddedByValue()                {}
@@ -108,6 +124,24 @@ func _Phloem_IngestMarkdown_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Phloem_RegisterProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterProjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PhloemServer).RegisterProject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Phloem_RegisterProject_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PhloemServer).RegisterProject(ctx, req.(*RegisterProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Phloem_ServiceDesc is the grpc.ServiceDesc for Phloem service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -118,6 +152,10 @@ var Phloem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IngestMarkdown",
 			Handler:    _Phloem_IngestMarkdown_Handler,
+		},
+		{
+			MethodName: "RegisterProject",
+			Handler:    _Phloem_RegisterProject_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
