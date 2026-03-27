@@ -2,6 +2,8 @@
 
 Stem 파이프라인: Root → Phloem (gRPC) → Rhizome (PostgreSQL, TypeDB, Qdrant).
 
+**실행·Docker 인제스트 요약**: [USAGE.md](./USAGE.md)
+
 파이프라인은 **도메인별로 운영**하고, chunking / sink / toc / embedder 등은 **boilerplate 컴포넌트**로 두어 다른 도메인에서 재사용할 수 있도록 구성한다.
 
 ---
@@ -115,8 +117,10 @@ types ← toc, chunker, sink, embedder
 
 ## 7. 실행
 
+- **요약 가이드**: [USAGE.md](./USAGE.md)
 - **서버**: `go run ./cmd/phloem` (또는 `docker compose up phloem-flow`).
 - **마크다운 전송**: `python -m property.root_props.run /path/to/doc.md` (see `property/root_props/`).
+- **Docker로 프로젝트 디렉터리만 인제스트** (DB 리셋·init 없음): `scripts/run_project_ingestion_docker.sh` — 세부는 [docker-ingestion.md](./docker-ingestion.md).
 
 구현 위치: `cmd/phloem` (Go gRPC 서버), `internal/phloem` (TOC, sink, embedding 및 도메인 파이프라인).
 
