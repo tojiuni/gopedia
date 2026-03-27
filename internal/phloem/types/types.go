@@ -1,5 +1,14 @@
 package types
 
+// SectionType values for structured L2 chunks (Qdrant payload + knowledge_l2.source_metadata).
+const (
+	SectionTypeHeading = "heading"
+	SectionTypeOrdered = "ordered"
+	SectionTypeTable   = "table"
+	SectionTypeCode    = "code"
+	SectionTypeImage   = "image"
+)
+
 // TOCNode is one heading or structure node in the table of contents.
 type TOCNode struct {
 	Text     string    `json:"text"`
@@ -23,14 +32,18 @@ const (
 
 // Chunk is the unit for embedding and storage. L2 = one per section/header; L3 = atomic sentence/block.
 type Chunk struct {
-	SectionID       string // unique within doc (e.g. s0, s1)
+	SectionID       string // unique within doc (e.g. s0, s1, o1, t1)
 	Path            string // TOC path e.g. "Introduction > Goals"
 	Text            string // content for embedding
 	Level           int    // LevelL2 or LevelL3; 0 treated as L2 for backward compat
 	MachineID       int64  // optional; set when chunk has its own identity
 	Version         int    // optional; for versioning/partial update
 	QdrantID        string // optional; reuse for unchanged L3
-	ParentSectionID string // optional; L2 parent for L3 chunks
+	ParentSectionID string // optional; logical parent section_id (s*) for derived L2 (o/t/c/i)
+	// SectionType: heading (default), ordered, table, code, image — for payload + PG JSON.
+	SectionType string `json:"section_type,omitempty"`
+	// SourceMetadata: persisted to knowledge_l2.source_metadata (e.g. table headers, code lang).
+	SourceMetadata map[string]any `json:"source_metadata,omitempty"`
 	// SemanticL3Split: when true, DefaultSink splits each sentence further on commas, pipes, etc.
 	// so the first fragment is parent L3 and following fragments chain under it (same l2_id).
 	SemanticL3Split bool `json:"semantic_l3_split,omitempty"`

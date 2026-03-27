@@ -80,9 +80,14 @@ CREATE TABLE IF NOT EXISTS knowledge_l2 (
   summary_bin BYTEA,
   summary_hash BYTEA,
   l3_child_hash BYTEA,
+  source_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   modified_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Block-level metadata for existing DBs (no-op if column already in CREATE TABLE).
+ALTER TABLE knowledge_l2
+  ADD COLUMN IF NOT EXISTS source_metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_l2_l1_id ON knowledge_l2 (l1_id);
 
@@ -131,3 +136,6 @@ ALTER TABLE knowledge_l2
   ADD COLUMN IF NOT EXISTS title_id UUID REFERENCES knowledge_l3(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_l2_title_id ON knowledge_l2 (title_id) WHERE title_id IS NOT NULL;
+
+COMMENT ON COLUMN knowledge_l2.source_metadata IS
+'JSON: block_type (ordered|table|code|image|heading), table headers/align/column_count, code language, image alt/url, parent_section_id echo.';
