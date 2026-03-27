@@ -6,7 +6,12 @@ import os
 
 import pytest
 
-from flows.xylem_flow.restorer import rows_to_markdown, restore_markdown_for_l1
+from flows.xylem_flow.restorer import (
+    restore_content_for_l1,
+    rows_join_for_format,
+    rows_to_markdown,
+    restore_markdown_for_l1,
+)
 
 
 def test_rows_to_markdown_joins_non_empty() -> None:
@@ -17,6 +22,12 @@ def test_rows_to_markdown_joins_non_empty() -> None:
 def test_rows_to_markdown_empty() -> None:
     assert rows_to_markdown([]) == ""
     assert rows_to_markdown([(None,)]) == ""
+
+
+def test_rows_join_for_format_code_uses_single_newline() -> None:
+    rows = [("line1",), ("line2",)]
+    assert rows_join_for_format(rows, "go") == "line1\nline2"
+    assert rows_join_for_format(rows, "md") == "line1\n\nline2"
 
 
 def _postgres_configured() -> bool:
@@ -44,8 +55,11 @@ def test_restore_markdown_for_l1_latest_snapshot() -> None:
         if not row:
             pytest.skip("no knowledge_l1 rows")
         l1_id = row[0]
-        md = restore_markdown_for_l1(conn, l1_id)
+        bundle = restore_content_for_l1(conn, l1_id)
+        md = bundle.get("content") or ""
     assert md, "restored markdown should be non-empty after ingest"
+    assert bundle.get("title") is not None
+    assert bundle.get("source_type")
     # After Phloem heading preservation, expect at least one markdown heading line in body
     assert "#" in md
 
@@ -85,6 +99,9 @@ def test_retrieve_and_enrich_returns_context() -> None:
 
     from flows.xylem_flow.retriever import retrieve_and_enrich
 
+    # Avoid downloading CrossEncoder weights in CI unless explicitly enabled.
+    os.environ.setdefault("GOPEDIA_RERANK", "0")
+
     conninfo = (
         f"host={os.environ.get('POSTGRES_HOST','')} "
         f"port={os.environ.get('POSTGRES_PORT','5432')} "
@@ -99,3 +116,5 @@ def test_retrieve_and_enrich_returns_context() -> None:
     first = enriched[0]
     assert "surrounding_context" in first
     assert "matched_content" in first
+    assert "breadcrumb" in first
+    assert "[문서:" in first["breadcrumb"]

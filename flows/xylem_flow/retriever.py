@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 CONTEXT_FOR_L3_SQL = """
 SELECT
@@ -13,7 +14,10 @@ SELECT
   l3.content AS matched_content,
   l3.sort_order AS sort_order,
   l2.id::text AS l2_id,
-  k1.title AS l1_title
+  k1.title AS l1_title,
+  k1.id::text AS l1_id,
+  k1.summary AS l1_summary,
+  k1.toc AS l1_toc
 FROM knowledge_l3 l3
 JOIN knowledge_l2 l2 ON l3.l2_id = l2.id
 JOIN knowledge_l1 k1 ON l2.l1_id = k1.id
@@ -27,6 +31,12 @@ FROM knowledge_l3 l3
 WHERE l3.l2_id = %s::uuid
   AND l3.sort_order BETWEEN %s AND %s
 ORDER BY l3.sort_order ASC
+"""
+
+L3_TEXT_BY_IDS_SQL = """
+SELECT id::text, content
+FROM knowledge_l3
+WHERE id = ANY(%s::uuid[])
 """
 
 
@@ -62,21 +72,132 @@ def qdrant_search_l3_points(
     return list(result.points or [])
 
 
-def fetch_rich_context(conn: Any, l3_id: str, neighbor_window: int = 2000) -> dict:
+def _decode_byte_summary(blob: Any) -> str:
+    if blob is None:
+        return ""
+    if isinstance(blob, memoryview):
+        blob = bytes(blob)
+    if isinstance(blob, bytes):
+        return blob.decode("utf-8", errors="replace")
+    return str(blob)
+
+
+def _breadcrumb(l1_title: str, section_heading: str) -> str:
+    doc = (l1_title or "").strip() or "(untitled)"
+    sec = (section_heading or "").strip() or "(section)"
+    return f"[문서: {doc}] > [섹션: {sec}]"
+
+
+def _token_count(text: str, model: Optional[str] = None) -> int:
+    try:
+        import tiktoken
+
+        m = model or os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        try:
+            enc = tiktoken.encoding_for_model(m)
+        except KeyError:
+            enc = tiktoken.get_encoding("cl100k_base")
+        return len(enc.encode(text or ""))
+    except Exception:
+        return max(1, len((text or "").split()) * 2)
+
+
+def _toc_to_str(toc: Any) -> str:
+    if toc is None:
+        return ""
+    if isinstance(toc, (dict, list)):
+        try:
+            return json.dumps(toc, ensure_ascii=False)
+        except TypeError:
+            return str(toc)
+    return str(toc)
+
+
+def fetch_l3_texts_by_ids(conn: Any, l3_ids: List[str]) -> Dict[str, str]:
+    if not l3_ids:
+        return {}
+    from uuid import UUID
+
+    uuids = []
+    for x in l3_ids:
+        try:
+            uuids.append(UUID(str(x)))
+        except ValueError:
+            continue
+    if not uuids:
+        return {}
+    with conn.cursor() as cur:
+        cur.execute(L3_TEXT_BY_IDS_SQL, (uuids,))
+        rows = cur.fetchall()
+    return {str(r[0]): (r[1] or "") for r in rows}
+
+
+def fetch_rich_context(
+    conn: Any,
+    l3_id: str,
+    neighbor_window: int = 2000,
+    level: int = 1,
+    max_tokens: Optional[int] = None,
+) -> dict:
+    """
+    level:
+      0 — matched L3 only (no neighbor window).
+      1 — neighbors within neighbor_window (sort_order span).
+      2 — emphasize L2 summary; tight neighbor span.
+      3 — adds L1 summary + TOC; neighbor span like level 1.
+    """
     with conn.cursor() as cur:
         cur.execute(CONTEXT_FOR_L3_SQL, (l3_id,))
         row = cur.fetchone()
         if not row:
             return {}
-        l2_summary, section_heading, lid, matched, sort_order, l2_id, l1_title = row
-        so = int(sort_order) if sort_order is not None else 0
-        lo = max(0, so - neighbor_window)
-        hi = so + neighbor_window
-        cur.execute(NEIGHBORS_SQL, (l2_id, lo, hi))
-        neighbors = cur.fetchall()
-    window_parts = [str(c[0]).strip() for c in neighbors if c[0] and str(c[0]).strip()]
-    window_text = "\n\n".join(window_parts)
-    return {
+        (
+            l2_summary,
+            section_heading,
+            lid,
+            matched,
+            sort_order,
+            l2_id,
+            l1_title,
+            l1_id,
+            l1_summary_blob,
+            l1_toc,
+        ) = row
+
+    so = int(sort_order) if sort_order is not None else 0
+
+    window_parts: List[str] = []
+    if level == 0:
+        pass
+    elif level == 2:
+        span = min(neighbor_window, 1500)
+        win_lo = max(0, so - span)
+        win_hi = so + span
+        with conn.cursor() as cur:
+            cur.execute(NEIGHBORS_SQL, (l2_id, win_lo, win_hi))
+            neighbors = cur.fetchall()
+        window_parts = [str(c[0]).strip() for c in neighbors if c[0] and str(c[0]).strip()]
+    else:
+        win_lo = max(0, so - neighbor_window)
+        win_hi = so + neighbor_window
+        with conn.cursor() as cur:
+            cur.execute(NEIGHBORS_SQL, (l2_id, win_lo, win_hi))
+            neighbors = cur.fetchall()
+        window_parts = [str(c[0]).strip() for c in neighbors if c[0] and str(c[0]).strip()]
+
+    if level == 2:
+        # Prefer section summary + matched line; keep neighbors minimal in the assembled narrative.
+        head = "\n\n".join([p for p in [l2_summary or "", matched or ""] if p.strip()])
+        window_text = head if head.strip() else "\n\n".join(window_parts)
+    else:
+        window_text = "\n\n".join(window_parts)
+
+    l1_summary_text = _decode_byte_summary(l1_summary_blob)
+    l1_toc_str = _toc_to_str(l1_toc)
+
+    ctx: dict = {
+        "breadcrumb": _breadcrumb(l1_title or "", section_heading or ""),
+        "l1_id": l1_id or "",
         "l1_title": l1_title or "",
         "l2_summary": l2_summary or "",
         "section_heading": section_heading or "",
@@ -84,6 +205,61 @@ def fetch_rich_context(conn: Any, l3_id: str, neighbor_window: int = 2000) -> di
         "matched_content": matched or "",
         "surrounding_context": window_text,
     }
+    if level >= 3:
+        ctx["l1_summary"] = l1_summary_text
+        ctx["l1_toc"] = l1_toc_str
+
+    if max_tokens is not None and max_tokens > 0:
+        embed_model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        fixed_keys = ("breadcrumb", "l1_title", "l2_summary", "section_heading", "matched_content")
+        if level >= 3:
+            fixed_keys = fixed_keys + ("l1_summary", "l1_toc")
+        fixed_text = "\n".join(str(ctx.get(k, "")) for k in fixed_keys)
+        used = _token_count(fixed_text, embed_model)
+        budget = max_tokens - used
+        if budget <= 0:
+            ctx["surrounding_context"] = ""
+            return ctx
+        acc: List[str] = []
+        for part in window_parts:
+            trial = "\n\n".join(acc + [part]) if acc else part
+            if _token_count(trial, embed_model) <= budget:
+                acc.append(part)
+            else:
+                break
+        ctx["surrounding_context"] = "\n\n".join(acc)
+
+    return ctx
+
+
+def _rerank_hits(
+    query: str,
+    conn: Any,
+    hits_with_ids: List[Tuple[Any, str]],
+    final_limit: int,
+    cross_encoder_model: Optional[str],
+) -> List[Tuple[Any, str]]:
+    if len(hits_with_ids) <= final_limit:
+        return hits_with_ids
+    ids = [x[1] for x in hits_with_ids]
+    texts = fetch_l3_texts_by_ids(conn, ids)
+    model_name = cross_encoder_model or os.environ.get(
+        "GOPEDIA_CROSS_ENCODER_MODEL",
+        "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    )
+    pairs: List[List[str]] = []
+    for _h, lid in hits_with_ids:
+        t = (texts.get(lid) or "").strip() or lid
+        pairs.append([query, t])
+    try:
+        from sentence_transformers import CrossEncoder
+
+        ce = CrossEncoder(model_name)
+        scores = ce.predict(pairs)
+        order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+        return [hits_with_ids[i] for i in order[:final_limit]]
+    except Exception:
+        return hits_with_ids[:final_limit]
 
 
 def retrieve_and_enrich(
@@ -93,25 +269,53 @@ def retrieve_and_enrich(
     qdrant_port: Optional[int] = None,
     collection: Optional[str] = None,
     vector_name: Optional[str] = None,
-    limit: int = 5,
+    candidate_limit: int = 30,
+    final_limit: int = 5,
     neighbor_window: int = 2000,
+    context_level: int = 1,
+    max_tokens: Optional[int] = None,
+    rerank: Optional[bool] = None,
+    cross_encoder_model: Optional[str] = None,
+    limit: Optional[int] = None,
 ) -> List[dict]:
+    """If ``limit`` is passed (legacy), it overrides ``final_limit``."""
+    if limit is not None:
+        final_limit = int(limit)
     host = qdrant_host or os.environ.get("QDRANT_HOST", "localhost")
     port = qdrant_port if qdrant_port is not None else int(os.environ.get("QDRANT_PORT", "6333"))
     coll = collection or os.environ.get("QDRANT_COLLECTION", "gopedia")
     vn = vector_name if vector_name is not None else (os.environ.get("QDRANT_VECTOR_NAME") or None)
 
+    if rerank is None:
+        v = os.environ.get("GOPEDIA_RERANK", "0").strip().lower()
+        rerank = v in ("1", "true", "yes", "on")
+
     vec = embed_query_openai(query)
     hits = qdrant_search_l3_points(
-        vec, host=host, port=port, collection=coll, limit=limit, vector_name=vn
+        vec, host=host, port=port, collection=coll, limit=candidate_limit, vector_name=vn
     )
-    out: List[dict] = []
+    rows: List[Tuple[Any, str]] = []
     for h in hits:
         payload = h.payload or {}
         lid = payload.get("l3_id")
         if not lid:
             continue
-        ctx = fetch_rich_context(conn, str(lid), neighbor_window=neighbor_window)
+        rows.append((h, str(lid)))
+
+    if rerank and len(rows) > final_limit:
+        rows = _rerank_hits(query, conn, rows, final_limit, cross_encoder_model)
+    else:
+        rows = rows[:final_limit]
+
+    out: List[dict] = []
+    for h, lid in rows:
+        ctx = fetch_rich_context(
+            conn,
+            lid,
+            neighbor_window=neighbor_window,
+            level=context_level,
+            max_tokens=max_tokens,
+        )
         if not ctx:
             continue
         ctx["qdrant_score"] = getattr(h, "score", None)

@@ -82,6 +82,7 @@ docker run --rm \
   -e QDRANT_VECTOR_NAME= \
   -e OPENAI_API_KEY="${OPENAI_API_KEY}" \
   -e OPENAI_EMBEDDING_MODEL="${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}" \
+  -e GOPEDIA_RERANK="${GOPEDIA_RERANK:-0}" \
   -v "$PWD:/app" \
   -w /app \
   "$IMAGE" \

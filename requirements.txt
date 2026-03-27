@@ -8,4 +8,6 @@ psycopg[binary]>=3.1
 typedb-driver>=3.8.1
 qdrant-client>=1.17.0
 openai>=1.12
+tiktoken>=0.7.0
 pytest>=7.0
+# Optional (Cross-Encoder rerank): pip install 'sentence-transformers>=3.0.0' — also installed in Dockerfile.ingestion.
