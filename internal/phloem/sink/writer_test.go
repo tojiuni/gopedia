@@ -1,7 +1,9 @@
 package sink
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestExtractFirstMarkdownHeadingLine(t *testing.T) {
@@ -41,6 +43,43 @@ func TestSplitSentencesEnglish(t *testing.T) {
 	}
 	if got[2] != "Line two" {
 		t.Fatalf("sentence[2]=%q", got[2])
+	}
+}
+
+func TestTruncateUTF8ByBytes(t *testing.T) {
+	// 2 ASCII + 1 Korean rune (3 bytes) + 1 ASCII
+	s := "ab한c"
+	got := truncateUTF8ByBytes(s, 4)
+	// Byte 4 cuts inside "한"; must drop partial rune → "ab"
+	if got != "ab" {
+		t.Fatalf("got %q want ab", got)
+	}
+	if !utf8.ValidString(got) {
+		t.Fatal("not valid UTF-8")
+	}
+}
+
+func TestSplitSentencesEnglishKeepsMarkdownLinkIntact(t *testing.T) {
+	in := "일정은 [RoadMap/SKILL.md](RoadMap/SKILL.md) 참조합니다."
+	got := splitSentencesEnglish(in)
+	want := "[RoadMap/SKILL.md](RoadMap/SKILL.md)"
+	ok := false
+	for _, s := range got {
+		if strings.Contains(s, want) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		t.Fatalf("expected full markdown link in one sentence, got %#v", got)
+	}
+}
+
+func TestSplitSentencesEnglishKeepsOrderedListMarkerIntact(t *testing.T) {
+	in := "1. **Verify (발아)**: 최소 단위 Root(소스)."
+	got := splitSentencesEnglish(in)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 sentence, got %d: %#v", len(got), got)
 	}
 }
 

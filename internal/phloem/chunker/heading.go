@@ -46,7 +46,7 @@ func (ByHeadingChunker) Chunks(content string, roots []types.TOCNode) ([]types.C
 			Version:   1,
 		})
 	}
-	return out, nil
+	return ExpandStructuredChunks(out), nil
 }
 
 // extractLeadingMarkdownIntro returns the substring before the first ATX heading line (# ...).

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,8 +21,9 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/redis/go-redis/v9"
 	pb "gopedia/core/proto/gen/go"
-	"gopedia/internal/phloem/nlpworker"
+	"gopedia/internal/phloem/chunker"
 	"gopedia/internal/phloem/embedder"
+	"gopedia/internal/phloem/nlpworker"
 	"gopedia/internal/phloem/types"
 )
 
@@ -150,6 +152,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 		}
 
 		changed := make([]types.Chunk, 0, len(chunks))
+		secMap := make(map[string]uuid.UUID)
 		for i, c := range chunks {
 			ver := c.Version
 			if ver == 0 {
@@ -167,6 +170,13 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 				l1UUID, c.SectionID,
 			).Scan(&prevHashBin, &prevVersion)
 			if err == nil && len(prevHashBin) == sha256.Size && string(prevHashBin) == string(sectionHashBin) {
+				var existing uuid.UUID
+				if err2 := s.pg.QueryRow(ctx,
+					`SELECT id FROM knowledge_l2 WHERE l1_id=$1 AND section_id=$2 ORDER BY created_at DESC LIMIT 1`,
+					l1UUID, c.SectionID,
+				).Scan(&existing); err2 == nil {
+					secMap[c.SectionID] = existing
+				}
 				continue
 			}
 			nextVersion := prevVersion + 1
@@ -176,15 +186,29 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			l2Summary := summarizeL2(msg.Title, c.Path, c.Text)
 			var l2ID uuid.UUID
 			l2Sort := (i + 1) * 1000
+
+			var parentArg interface{}
+			if ps := c.ParentSectionID; ps != "" {
+				if pu, ok := secMap[ps]; ok {
+					parentArg = pu
+				}
+			}
+
+			l2MetaJSON, metaErr := chunker.ChunkSourceMetadataJSON(c)
+			if metaErr != nil {
+				return docUUIDStr, fmt.Errorf("knowledge_l2 source_metadata %s: %w", c.SectionID, metaErr)
+			}
+
 			err = s.pg.QueryRow(ctx,
-				`INSERT INTO knowledge_l2 (l1_id, summary, version, sort_order, section_id, version_id, summary_bin, summary_hash, created_at, modified_at)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())
+				`INSERT INTO knowledge_l2 (l1_id, parent_id, summary, version, sort_order, section_id, version_id, summary_bin, summary_hash, source_metadata, created_at, modified_at)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, now(), now())
 				 RETURNING id`,
-				l1UUID, l2Summary, nextVersion, l2Sort, c.SectionID, versionID, []byte(l2Summary), sectionHashBin,
+				l1UUID, parentArg, l2Summary, nextVersion, l2Sort, c.SectionID, versionID, []byte(l2Summary), sectionHashBin, l2MetaJSON,
 			).Scan(&l2ID)
 			if err != nil {
 				return docUUIDStr, fmt.Errorf("postgres knowledge_l2 %s: %w", c.SectionID, err)
 			}
+			secMap[c.SectionID] = l2ID
 
 			headingLine := extractFirstMarkdownHeadingLine(c.Text)
 			var titleL3ID uuid.UUID
@@ -211,22 +235,39 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 				chainAfter = &titleL3ID
 			}
 
-			sentences := splitSentencesEnglish(stripMarkdownHeadings(c.Text))
-			if addr := os.Getenv("GOPEDIA_NLP_WORKER_GRPC_ADDR"); addr != "" {
-				resp, err := nlpworker.New(addr).ProcessL2(ctx, &pb.NLPRequest{
-					VersionId: versionID,
-					L1Id:      headL1ID.String(),
-					L2Id:      l2ID.String(),
-					MachineId: msg.MachineId,
-					Text:      stripMarkdownHeadings(c.Text),
-				})
-				if err != nil {
-					slog.Warn("nlp worker call failed, falling back to local splitter", "err", err)
-				} else if resp != nil && len(resp.Sentences) > 0 {
-					sentences = resp.Sentences
+			secType := c.SectionType
+			if secType == "" {
+				secType = types.SectionTypeHeading
+			}
+
+			var sentences []string
+			switch secType {
+			case types.SectionTypeCode, types.SectionTypeImage:
+				if t := strings.TrimSpace(c.Text); t != "" {
+					sentences = []string{t}
+				}
+			case types.SectionTypeTable:
+				sentences = splitMarkdownTableDataRows(c.Text)
+			default:
+				sentences = splitSentencesEnglish(stripMarkdownHeadings(c.Text))
+				if addr := os.Getenv("GOPEDIA_NLP_WORKER_GRPC_ADDR"); addr != "" {
+					resp, err := nlpworker.New(addr).ProcessL2(ctx, &pb.NLPRequest{
+						VersionId: versionID,
+						L1Id:      headL1ID.String(),
+						L2Id:      l2ID.String(),
+						MachineId: msg.MachineId,
+						Text:      stripMarkdownHeadings(c.Text),
+					})
+					if err != nil {
+						slog.Warn("nlp worker call failed, falling back to local splitter", "err", err)
+					} else if resp != nil && len(resp.Sentences) > 0 {
+						sentences = resp.Sentences
+					}
 				}
 			}
-			sentences = expandSemanticL3Fragments(sentences, c.SemanticL3Split)
+
+			semanticSplit := c.SemanticL3Split && (secType == types.SectionTypeHeading || secType == types.SectionTypeOrdered)
+			sentences = expandSemanticL3Fragments(sentences, semanticSplit)
 			inserted, err := insertL3Sentences(ctx, s.pg, l2ID, sentences, versionID, chainAfter)
 			if err != nil {
 				return docUUIDStr, fmt.Errorf("postgres knowledge_l3 %s: %w", c.SectionID, err)
@@ -242,12 +283,13 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			}
 			for _, ins := range inserted {
 				l3Items = append(l3Items, l3ToEmbed{
-					l1ID:      headL1ID,
-					l3ID:      ins.l3ID,
-					l2ID:      l2ID,
-					sectionID: c.SectionID,
-					text:      ins.text,
-					versionID: versionID,
+					l1ID:        headL1ID,
+					l3ID:        ins.l3ID,
+					l2ID:        l2ID,
+					sectionID:   c.SectionID,
+					sectionType: secType,
+					text:        ins.text,
+					versionID:   versionID,
 				})
 			}
 			changed = append(changed, c)
@@ -270,7 +312,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 		}
 		l1Text := msg.Title
 		if len(msg.Content) > 500 {
-			l1Text += "\n" + msg.Content[:500]
+			l1Text += "\n" + truncateUTF8ByBytes(msg.Content, 500)
 		} else {
 			l1Text += "\n" + msg.Content
 		}
@@ -328,15 +370,20 @@ func (s *DefaultSink) upsertL3Point(ctx context.Context, collection, pointID str
 	qid := qdrantUUID(pointID)
 	keywordIDs := s.tuberKeywordIDs(ctx, item.text)
 	st := sourceTypeForPayload()
+	secType := item.sectionType
+	if secType == "" {
+		secType = types.SectionTypeHeading
+	}
 	payload := map[string]interface{}{
-		"l1_id":       item.l1ID.String(),
-		"l2_id":       item.l2ID.String(),
-		"l3_id":       item.l3ID.String(),
-		"section_id":  item.sectionID,
-		"version_id":  item.versionID,
-		"keyword_ids": keywordIDs,
-		"source_type": st,
-		"project_id":  projectID,
+		"l1_id":         item.l1ID.String(),
+		"l2_id":         item.l2ID.String(),
+		"l3_id":         item.l3ID.String(),
+		"section_id":    item.sectionID,
+		"section_type":  secType,
+		"version_id":    item.versionID,
+		"keyword_ids":   keywordIDs,
+		"source_type":   st,
+		"project_id":    projectID,
 	}
 	points := []*qdrant.PointStruct{{
 		Id:      qdrant.NewID(qid),
@@ -371,12 +418,13 @@ func (s *DefaultSink) tuberKeywordIDs(ctx context.Context, text string) []int64 
 }
 
 type l3ToEmbed struct {
-	l1ID      uuid.UUID
-	l3ID      uuid.UUID
-	l2ID      uuid.UUID
-	sectionID string
-	text      string
-	versionID int64
+	l1ID        uuid.UUID
+	l3ID        uuid.UUID
+	l2ID        uuid.UUID
+	sectionID   string
+	sectionType string
+	text        string
+	versionID   int64
 }
 
 func payloadMapToPayload(m map[string]interface{}) map[string]*qdrant.Value {
@@ -434,7 +482,11 @@ func tocJSONFromChunks(chunks []types.Chunk) ([]byte, error) {
 func computeL2ChildHash(chunks []types.Chunk) []byte {
 	parts := make([]string, 0, len(chunks))
 	for _, c := range chunks {
-		parts = append(parts, fmt.Sprintf("%s|%s|%s", c.SectionID, c.Path, contentHashHex(c.Text)))
+		st := c.SectionType
+		if st == "" {
+			st = types.SectionTypeHeading
+		}
+		parts = append(parts, fmt.Sprintf("%s|%s|%s|%s|%s", c.SectionID, c.ParentSectionID, st, c.Path, contentHashHex(c.Text)))
 	}
 	sort.Strings(parts)
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
@@ -570,7 +622,8 @@ func ensurePipelineVersion(ctx context.Context, pg *pgxpool.Pool) (int64, error)
 	return id, err
 }
 
-var sentenceSplitRe = regexp.MustCompile(`[.!?]+`)
+// sentenceSplitMaskedRe splits on Latin/CJK sentence punctuation after maskForSentenceSplit.
+var sentenceSplitMaskedRe = regexp.MustCompile(`[.!?。！？…]+`)
 var keywordRe = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9_-]{2,}`)
 // mdHeadingLineRe matches a single markdown heading line (same rule as chunker/heading.go).
 var mdHeadingLineRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
@@ -647,6 +700,37 @@ func splitClauseFragments(s string) []string {
 	return parts
 }
 
+// splitMarkdownTableDataRows returns one string per data row (after header + separator) for L3 embedding.
+func splitMarkdownTableDataRows(tableMarkdown string) []string {
+	lines := strings.Split(strings.TrimSpace(tableMarkdown), "\n")
+	if len(lines) < 3 {
+		t := strings.TrimSpace(tableMarkdown)
+		if t == "" {
+			return nil
+		}
+		return []string{t}
+	}
+	var rows []string
+	for _, ln := range lines[2:] {
+		t := strings.TrimSpace(ln)
+		if t == "" {
+			continue
+		}
+		if !strings.Contains(t, "|") {
+			break
+		}
+		rows = append(rows, t)
+	}
+	if len(rows) == 0 {
+		t := strings.TrimSpace(tableMarkdown)
+		if t == "" {
+			return nil
+		}
+		return []string{t}
+	}
+	return rows
+}
+
 func splitSentencesEnglish(s string) []string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -656,15 +740,19 @@ func splitSentencesEnglish(s string) []string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 
-	// Very simple sentence splitter: split on punctuation and newlines.
-	rawParts := sentenceSplitRe.Split(s, -1)
+	masked, repls := maskForSentenceSplit(s)
+	rawParts := sentenceSplitMaskedRe.Split(masked, -1)
 	out := make([]string, 0, len(rawParts))
 	for _, p := range rawParts {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		out = append(out, p)
+		p = unmaskSplitText(p, repls)
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
 	}
 	return out
 }
@@ -796,9 +884,7 @@ func summarizeL2(docTitle, parentPath, l2Text string) string {
 	if sum == "" {
 		sum = body
 	}
-	if len(sum) > 400 {
-		sum = sum[:400]
-	}
+	sum = truncateUTF8ByBytes(sum, 400)
 	if docTitle != "" || parentPath != "" {
 		prefix := strings.TrimSpace(docTitle)
 		if parentPath != "" {
@@ -834,8 +920,19 @@ func summarizeL1(docTitle string, l2Summaries []string) string {
 		}
 	}
 	out := b.String()
-	if len(out) > 1200 {
-		out = out[:1200]
-	}
+	out = truncateUTF8ByBytes(out, 1200)
 	return strings.TrimSpace(out)
+}
+
+// truncateUTF8ByBytes returns s unchanged if len(s) <= maxBytes; otherwise the longest
+// prefix with byte length <= maxBytes that is whole UTF-8 (avoids invalid sequences for PG TEXT).
+func truncateUTF8ByBytes(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	s = s[:maxBytes]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s
 }
