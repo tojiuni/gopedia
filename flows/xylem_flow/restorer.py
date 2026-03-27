@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
-from typing import Any, List, Sequence
+from typing import Any, List, Sequence, Tuple
 
-# Join L3 rows in document order: section order then atomic order within section.
-RESTORE_L3_ORDERED_SQL = """
-SELECT l3.content
-FROM knowledge_l3 l3
-INNER JOIN knowledge_l2 l2 ON l3.l2_id = l2.id
+# Per L2 block: sort_order groups; within L2, L3 ordered by sort_order.
+RESTORE_L2_L3_SQL = """
+SELECT l2.sort_order,
+       l2.section_id,
+       l2.source_metadata,
+       l3.sort_order AS l3_sort,
+       l3.content
+FROM knowledge_l2 l2
+LEFT JOIN knowledge_l3 l3 ON l3.l2_id = l2.id
 WHERE l2.l1_id = %s::uuid
-ORDER BY l2.sort_order ASC, l3.sort_order ASC
+ORDER BY l2.sort_order ASC, l3.sort_order ASC NULLS LAST
 """
 
 RESTORE_L1_META_SQL = """
@@ -19,6 +23,64 @@ SELECT k.title, k.source_type, k.source_metadata, k.toc, k.summary
 FROM knowledge_l1 k
 WHERE k.id = %s::uuid
 """
+
+def _parse_l2_meta(raw: Any) -> dict[str, Any]:
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return dict(json.loads(raw))
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _format_table(meta: dict[str, Any], row_lines: List[str]) -> str:
+    headers = meta.get("headers")
+    sep = (meta.get("separator_row") or "").strip()
+    if isinstance(headers, list) and headers:
+        header_line = "| " + " | ".join(str(h) for h in headers) + " |"
+        if not sep:
+            sep = "|" + "|".join([" --- " for _ in headers]) + "|"
+        body = "\n".join(row_lines)
+        parts = [header_line, sep]
+        if body.strip():
+            parts.append(body.strip())
+        return "\n".join(parts).strip()
+    return "\n".join(row_lines).strip()
+
+
+def _format_code(meta: dict[str, Any], lines: List[str]) -> str:
+    lang = (meta.get("language") or "").strip()
+    body = "\n".join(lines).strip()
+    if body.startswith("```"):
+        return body
+    return f"```{lang}\n{body}\n```".strip()
+
+
+def _format_block(section_id: str, meta: dict[str, Any], l3_items: List[Tuple[Any, str]]) -> str:
+    """l3_items: (sort_order, content) sorted."""
+    meta = meta or {}
+    bt = (meta.get("block_type") or "").lower()
+    sid = section_id or ""
+
+    lines: List[str] = []
+    for _so, text in l3_items:
+        if text is None or not str(text).strip():
+            continue
+        lines.append(str(text).strip())
+
+    if sid.startswith("t") or bt == "table":
+        return _format_table(meta, lines)
+    if sid.startswith("c") or bt == "code":
+        return _format_code(meta, lines)
+    if sid.startswith("i") or bt == "image":
+        return "\n".join(lines)
+    if lines:
+        return "\n\n".join(lines)
+    return ""
 
 
 def rows_join_for_format(rows: Sequence[tuple[Any, ...]], source_type: str) -> str:
@@ -48,7 +110,7 @@ def rows_to_markdown(rows: Sequence[tuple[Any, ...]]) -> str:
 
 def restore_content_for_l1(conn: Any, l1_id: str) -> dict[str, Any]:
     """
-    Load knowledge_l1 metadata and all L3 content under this snapshot, ordered for viewer restore.
+    Load knowledge_l1 metadata and all L2/L3 under this snapshot, ordered for viewer restore.
 
     Returns a dict: content, title, source_type, source_metadata, toc, l1_summary, l1_id.
     """
@@ -66,7 +128,7 @@ def restore_content_for_l1(conn: Any, l1_id: str) -> dict[str, Any]:
                 "l1_summary": "",
             }
         title, source_type, smeta_raw, toc_raw, summary_blob = meta
-        cur.execute(RESTORE_L3_ORDERED_SQL, (l1_id,))
+        cur.execute(RESTORE_L2_L3_SQL, (l1_id,))
         rows = cur.fetchall()
 
     smeta: dict | Any
@@ -101,7 +163,38 @@ def restore_content_for_l1(conn: Any, l1_id: str) -> dict[str, Any]:
             summary_text = str(summary_blob)
 
     st = (source_type or "md").lower()
-    content = rows_join_for_format(rows, st)
+
+    blocks: list[str] = []
+    cur_key: tuple[Any, str] | None = None
+    cur_meta: dict[str, Any] = {}
+    cur_sid = ""
+    cur_items: List[Tuple[Any, str]] = []
+
+    def flush() -> None:
+        nonlocal cur_key, cur_meta, cur_sid, cur_items
+        if cur_key is None:
+            return
+        piece = _format_block(cur_sid, cur_meta, cur_items)
+        if piece.strip():
+            blocks.append(piece.strip())
+        cur_key = None
+        cur_meta = {}
+        cur_sid = ""
+        cur_items = []
+
+    for row in rows:
+        l2_sort, section_id, smeta_l2, l3_sort, content = row
+        key = (l2_sort, section_id)
+        if cur_key is None or key != cur_key:
+            flush()
+            cur_key = key
+            cur_sid = section_id or ""
+            cur_meta = _parse_l2_meta(smeta_l2)
+        if content is not None:
+            cur_items.append((l3_sort, str(content)))
+    flush()
+
+    content = "\n\n".join(blocks) if blocks else ""
 
     return {
         "l1_id": l1_id,

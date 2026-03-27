@@ -14,6 +14,8 @@ SELECT
   l3.content AS matched_content,
   l3.sort_order AS sort_order,
   l2.id::text AS l2_id,
+  l2.section_id AS l2_section_id,
+  l2.source_metadata AS l2_source_metadata,
   k1.title AS l1_title,
   k1.id::text AS l1_id,
   k1.summary AS l1_summary,
@@ -158,6 +160,8 @@ def fetch_rich_context(
             matched,
             sort_order,
             l2_id,
+            l2_section_id,
+            l2_source_metadata,
             l1_title,
             l1_id,
             l1_summary_blob,
@@ -195,12 +199,23 @@ def fetch_rich_context(
     l1_summary_text = _decode_byte_summary(l1_summary_blob)
     l1_toc_str = _toc_to_str(l1_toc)
 
+    l2_meta: dict | Any = {}
+    if isinstance(l2_source_metadata, dict):
+        l2_meta = l2_source_metadata
+    elif isinstance(l2_source_metadata, str):
+        try:
+            l2_meta = json.loads(l2_source_metadata)
+        except json.JSONDecodeError:
+            l2_meta = {}
+
     ctx: dict = {
         "breadcrumb": _breadcrumb(l1_title or "", section_heading or ""),
         "l1_id": l1_id or "",
         "l1_title": l1_title or "",
         "l2_summary": l2_summary or "",
         "section_heading": section_heading or "",
+        "l2_section_id": l2_section_id or "",
+        "l2_block_type": (l2_meta.get("block_type") or "") if l2_meta else "",
         "matched_l3_id": lid,
         "matched_content": matched or "",
         "surrounding_context": window_text,
