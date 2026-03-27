@@ -161,14 +161,17 @@ func TestWikiDomainPipelineWithSampleMD(t *testing.T) {
 	if call.Msg.Title != req.Title {
 		t.Errorf("sink Title = %q, want %q", call.Msg.Title, req.Title)
 	}
-	// sample.md has # Introduction, ## Goals, ## Implementation -> 3 TOC chunks
-	if want := 3; len(call.Chunks) != want {
+	// sample.md: preamble (root) + # Introduction, ## Goals, ## Implementation -> 4 chunks
+	if want := 4; len(call.Chunks) != want {
 		t.Errorf("expected %d chunks from sample.md TOC, got %d", want, len(call.Chunks))
 	}
-	// Sanity: first chunk should include the Introduction section body (not just the heading title).
-	if len(call.Chunks) > 0 {
-		if !strings.Contains(call.Chunks[0].Text, "# Introduction") {
-			t.Errorf("first chunk Text missing Introduction heading line: %q", call.Chunks[0].Text)
+	if len(call.Chunks) > 0 && call.Chunks[0].SectionID != "root" {
+		t.Errorf("expected first chunk SectionID root, got %q", call.Chunks[0].SectionID)
+	}
+	// Second chunk is Introduction section body.
+	if len(call.Chunks) > 1 {
+		if !strings.Contains(call.Chunks[1].Text, "# Introduction") {
+			t.Errorf("Introduction chunk Text missing heading line: %q", call.Chunks[1].Text)
 		}
 	}
 }

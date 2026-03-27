@@ -9,6 +9,9 @@ import (
 )
 
 // ByHeadingChunker produces one chunk per TOC section (section body).
+//
+// Long-term: consider a markdown AST (e.g. goldmark) with byte offsets for zero-overlap chunks
+// and spurious-whitespace normalization without losing real content.
 type ByHeadingChunker struct{}
 
 var mdHeadingRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
@@ -16,21 +19,49 @@ var mdHeadingRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 // Chunks flattens the TOC and returns one Chunk per node.
 // Each chunk is L2 and contains the section body (from the heading line up to the next heading
 // at the same or higher level).
+// If the document has text before the first ATX heading (frontmatter, preamble), it is preserved
+// as SectionID "root" as the first chunk so ingestion does not drop that content.
 func (ByHeadingChunker) Chunks(content string, roots []types.TOCNode) ([]types.Chunk, error) {
 	flat := toc.FlattenTOC(roots)
-	sectionTextByID := extractMarkdownSections(content, flat)
+	intro := extractLeadingMarkdownIntro(content)
 
-	out := make([]types.Chunk, len(flat))
+	var out []types.Chunk
+	if strings.TrimSpace(intro) != "" {
+		out = append(out, types.Chunk{
+			SectionID: "root",
+			Path:      "root",
+			Text:      strings.TrimSpace(intro),
+			Level:     types.LevelL2,
+			Version:   1,
+		})
+	}
+
+	sectionTextByID := extractMarkdownSections(content, flat)
 	for i := range flat {
-		out[i] = types.Chunk{
+		out = append(out, types.Chunk{
 			SectionID: flat[i].SectionID,
 			Path:      flat[i].Path,
 			Text:      sectionTextByID[flat[i].SectionID],
 			Level:     types.LevelL2,
 			Version:   1,
-		}
+		})
 	}
 	return out, nil
+}
+
+// extractLeadingMarkdownIntro returns the substring before the first ATX heading line (# ...).
+// If there is no heading, returns trimmed full content (entire doc is preamble-only).
+func extractLeadingMarkdownIntro(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if mdHeadingRe.MatchString(strings.TrimSpace(line)) {
+			if i == 0 {
+				return ""
+			}
+			return strings.TrimSpace(strings.Join(lines[:i], "\n"))
+		}
+	}
+	return strings.TrimSpace(content)
 }
 
 func extractMarkdownSections(content string, flat []types.FlatTOCItem) map[string]string {

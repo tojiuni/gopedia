@@ -7,6 +7,7 @@ import (
 )
 
 // BySymbolChunker produces one chunk per code symbol (function, class, etc.).
+// Long-term: tree-sitter or Go AST byte offsets for zero-overlap chunks; strip only spurious whitespace.
 // TODO: implement AST-based slicing when CodeTOCParser provides symbol ranges.
 type BySymbolChunker struct{}
 

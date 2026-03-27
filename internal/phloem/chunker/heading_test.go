@@ -40,12 +40,23 @@ End.
 	if err != nil {
 		t.Fatalf("chunks: %v", err)
 	}
-	if len(chunks) < 4 {
-		t.Fatalf("expected >=4 chunks, got %d", len(chunks))
+	if len(chunks) < 5 {
+		t.Fatalf("expected >=5 chunks (root + 4 sections), got %d", len(chunks))
+	}
+
+	root := chunks[0]
+	if root.SectionID != "root" {
+		t.Fatalf("expected first chunk SectionID root, got %q", root.SectionID)
+	}
+	if !strings.Contains(root.Text, "---") || !strings.Contains(root.Text, "title: Sample") {
+		t.Fatalf("root chunk should preserve frontmatter preamble:\n%s", root.Text)
+	}
+	if strings.Contains(root.Text, "# Introduction") {
+		t.Fatalf("root chunk should not include first heading:\n%s", root.Text)
 	}
 
 	// Introduction should include its own body and subheadings until next #.
-	intro := chunks[0]
+	intro := chunks[1]
 	if intro.Level != types.LevelL2 {
 		t.Fatalf("expected L2 chunk, got level=%d", intro.Level)
 	}
@@ -63,7 +74,7 @@ End.
 	}
 
 	// Goals chunk should stop at next ##.
-	goals := chunks[1]
+	goals := chunks[2]
 	if !strings.Contains(goals.Text, "## Goals") {
 		t.Fatalf("goals text missing heading line:\n%s", goals.Text)
 	}

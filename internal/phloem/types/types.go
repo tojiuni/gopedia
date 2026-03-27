@@ -23,12 +23,15 @@ const (
 
 // Chunk is the unit for embedding and storage. L2 = one per section/header; L3 = atomic sentence/block.
 type Chunk struct {
-	SectionID      string  // unique within doc (e.g. s0, s1)
-	Path           string  // TOC path e.g. "Introduction > Goals"
-	Text           string  // content for embedding
-	Level          int     // LevelL2 or LevelL3; 0 treated as L2 for backward compat
-	MachineID      int64   // optional; set when chunk has its own identity
-	Version        int     // optional; for versioning/partial update
-	QdrantID       string  // optional; reuse for unchanged L3
+	SectionID       string // unique within doc (e.g. s0, s1)
+	Path            string // TOC path e.g. "Introduction > Goals"
+	Text            string // content for embedding
+	Level           int    // LevelL2 or LevelL3; 0 treated as L2 for backward compat
+	MachineID       int64  // optional; set when chunk has its own identity
+	Version         int    // optional; for versioning/partial update
+	QdrantID        string // optional; reuse for unchanged L3
 	ParentSectionID string // optional; L2 parent for L3 chunks
+	// SemanticL3Split: when true, DefaultSink splits each sentence further on commas, pipes, etc.
+	// so the first fragment is parent L3 and following fragments chain under it (same l2_id).
+	SemanticL3Split bool `json:"semantic_l3_split,omitempty"`
 }

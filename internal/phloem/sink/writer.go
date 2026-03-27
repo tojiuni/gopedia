@@ -226,6 +226,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 					sentences = resp.Sentences
 				}
 			}
+			sentences = expandSemanticL3Fragments(sentences, c.SemanticL3Split)
 			inserted, err := insertL3Sentences(ctx, s.pg, l2ID, sentences, versionID, chainAfter)
 			if err != nil {
 				return docUUIDStr, fmt.Errorf("postgres knowledge_l3 %s: %w", c.SectionID, err)
@@ -599,6 +600,51 @@ func extractFirstMarkdownHeadingLine(s string) string {
 		}
 	}
 	return ""
+}
+
+// expandSemanticL3Fragments splits long or clause-heavy sentences on commas, pipes, and
+// semicolons so insertL3Sentences can chain them under the same L2 (first fragment parent for the rest).
+func expandSemanticL3Fragments(sents []string, split bool) []string {
+	if !split || len(sents) == 0 {
+		return sents
+	}
+	var out []string
+	for _, s := range sents {
+		out = append(out, splitClauseFragments(s)...)
+	}
+	return out
+}
+
+func splitClauseFragments(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	// Keep short, simple sentences intact.
+	if len(s) < 120 && !strings.Contains(s, "|") && strings.Count(s, ",") <= 1 {
+		return []string{s}
+	}
+	var parts []string
+	var b strings.Builder
+	for _, r := range s {
+		if r == ',' || r == '|' || r == ';' {
+			p := strings.TrimSpace(b.String())
+			b.Reset()
+			if p != "" {
+				parts = append(parts, p)
+			}
+			continue
+		}
+		b.WriteRune(r)
+	}
+	rest := strings.TrimSpace(b.String())
+	if rest != "" {
+		parts = append(parts, rest)
+	}
+	if len(parts) <= 1 {
+		return []string{s}
+	}
+	return parts
 }
 
 func splitSentencesEnglish(s string) []string {

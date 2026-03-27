@@ -15,6 +15,18 @@ func TestExtractFirstMarkdownHeadingLine(t *testing.T) {
 	}
 }
 
+func TestExpandSemanticL3Fragments(t *testing.T) {
+	sents := []string{"short"}
+	if got := expandSemanticL3Fragments(sents, false); len(got) != 1 {
+		t.Fatalf("no split when disabled: %#v", got)
+	}
+	long := "alpha, beta, gamma | delta"
+	got := expandSemanticL3Fragments([]string{long}, true)
+	if len(got) < 3 {
+		t.Fatalf("expected clause splits, got %#v", got)
+	}
+}
+
 func TestSplitSentencesEnglish(t *testing.T) {
 	in := "# Title\n\nHello world. This is a test!\n\nLine two?\n"
 	got := splitSentencesEnglish(stripMarkdownHeadings(in))
