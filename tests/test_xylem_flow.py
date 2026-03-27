@@ -6,6 +6,7 @@ import os
 
 import pytest
 
+from flows.xylem_flow import restorer as restorer_mod
 from flows.xylem_flow.restorer import (
     restore_content_for_l1,
     rows_join_for_format,
@@ -22,6 +23,17 @@ def test_rows_to_markdown_joins_non_empty() -> None:
 def test_rows_to_markdown_empty() -> None:
     assert rows_to_markdown([]) == ""
     assert rows_to_markdown([(None,)]) == ""
+
+
+def test_format_block_table_rebuilds_pipe_table() -> None:
+    meta = {
+        "block_type": "table",
+        "headers": ["a", "b"],
+        "separator_row": "|---|---|",
+    }
+    got = restorer_mod._format_block("t1", meta, [(1000, "| 1 | 2 |")])
+    assert "| a |" in got
+    assert "| 1 |" in got
 
 
 def test_rows_join_for_format_code_uses_single_newline() -> None:
@@ -62,6 +74,30 @@ def test_restore_markdown_for_l1_latest_snapshot() -> None:
     assert bundle.get("source_type")
     # After Phloem heading preservation, expect at least one markdown heading line in body
     assert "#" in md
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _postgres_configured(), reason="POSTGRES_HOST/POSTGRES_USER not set")
+def test_knowledge_l2_source_metadata_column_exists() -> None:
+    import psycopg
+
+    conninfo = (
+        f"host={os.environ.get('POSTGRES_HOST','')} "
+        f"port={os.environ.get('POSTGRES_PORT','5432')} "
+        f"user={os.environ.get('POSTGRES_USER','')} "
+        f"password={os.environ.get('POSTGRES_PASSWORD','')} "
+        f"dbname={os.environ.get('POSTGRES_DB','gopedia')} sslmode=disable"
+    )
+    with psycopg.connect(conninfo) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'knowledge_l2'
+                  AND column_name = 'source_metadata'
+                """
+            )
+            assert cur.fetchone() is not None
 
 
 @pytest.mark.integration

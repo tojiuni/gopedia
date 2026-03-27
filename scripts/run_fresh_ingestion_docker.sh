@@ -33,6 +33,23 @@ PHLOEM_E2E_NAME="${GOPEDIA_PHLOEM_E2E_NAME:-phloem-e2e}"
 SAMPLE_MD="${1:-tests/fixtures/sample.md}"
 KEYWORD="${2:-Introduction}"
 
+# Repo is mounted as /app; samples outside PWD are invisible unless we bind-mount their parent dir.
+EXTRA_DOCKER_MOUNTS=()
+SAMPLE_FOR_DOCKER="$SAMPLE_MD"
+if [[ -f "$SAMPLE_MD" ]]; then
+  _abs_sample=$(realpath "$SAMPLE_MD")
+  _abs_repo=$(realpath "$PWD")
+  case "$_abs_sample" in
+  "$_abs_repo"/*) ;;
+  *)
+    _sdir=$(dirname "$_abs_sample")
+    _sbase=$(basename "$_abs_sample")
+    EXTRA_DOCKER_MOUNTS=( -v "$_sdir:/_gopedia_e2e_sample:ro" )
+    SAMPLE_FOR_DOCKER="/_gopedia_e2e_sample/$_sbase"
+    ;;
+  esac
+fi
+
 cleanup_phloem() {
   docker stop "$PHLOEM_E2E_NAME" 2>/dev/null || true
   docker rm "$PHLOEM_E2E_NAME" 2>/dev/null || true
@@ -109,9 +126,10 @@ docker run --rm \
   -e QDRANT_HOST="${QDRANT_HOST:-qdrant}" \
   -e GOPEDIA_PHLOEM_GRPC_ADDR="${GOPEDIA_PHLOEM_GRPC_ADDR:-$PHLOEM_E2E_NAME:50051}" \
   -v "$PWD:/app" \
+  "${EXTRA_DOCKER_MOUNTS[@]}" \
   -w /app \
   "$IMAGE" \
-  ./scripts/run_transpiration_e2e.sh "$SAMPLE_MD" "$KEYWORD"
+  ./scripts/run_transpiration_e2e.sh "$SAMPLE_FOR_DOCKER" "$KEYWORD"
 
 echo "=== [fresh] Verify Qdrant payload ==="
 docker run --rm \

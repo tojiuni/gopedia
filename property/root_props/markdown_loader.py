@@ -99,4 +99,13 @@ def call_phloem_ingest(
         source_metadata=source_metadata or {},
     )
     resp = stub.IngestMarkdown(req)
+    if not resp.ok:
+        msg = (resp.error_message or "").strip()
+        if msg:
+            print(f"Phloem IngestMarkdown: {msg}", file=sys.stderr)
+        else:
+            print(
+                "Phloem IngestMarkdown failed (ok=false, empty error_message)",
+                file=sys.stderr,
+            )
     return resp.ok, resp.doc_id, resp.machine_id

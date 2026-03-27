@@ -46,6 +46,33 @@ def _check_title_id_column(cur) -> bool:
     return cur.fetchone() is not None
 
 
+def _check_l2_source_metadata_column(cur) -> bool:
+    cur.execute(
+        """
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'knowledge_l2'
+          AND column_name = 'source_metadata'
+        """
+    )
+    return cur.fetchone() is not None
+
+
+def _require_knowledge_l2_schema(cur) -> bool:
+    if not _check_title_id_column(cur):
+        print(
+            "knowledge_l2.title_id column missing (apply postgres_ddl.sql)",
+            file=sys.stderr,
+        )
+        return False
+    if not _check_l2_source_metadata_column(cur):
+        print(
+            "knowledge_l2.source_metadata column missing (apply postgres_ddl.sql)",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def run_restore_only() -> int:
     try:
         from flows.xylem_flow.restorer import restore_markdown_for_l1
@@ -56,11 +83,7 @@ def run_restore_only() -> int:
     try:
         with _pg_connect() as conn:
             with conn.cursor() as cur:
-                if not _check_title_id_column(cur):
-                    print(
-                        "knowledge_l2.title_id column missing (apply postgres_ddl.sql)",
-                        file=sys.stderr,
-                    )
+                if not _require_knowledge_l2_schema(cur):
                     return 4
                 cur.execute("SELECT COUNT(*) FROM knowledge_l2 WHERE title_id IS NOT NULL")
                 titled = cur.fetchone()[0]
@@ -109,11 +132,7 @@ def run_keyword_only(query: str) -> int:
     try:
         with _pg_connect() as conn:
             with conn.cursor() as cur:
-                if not _check_title_id_column(cur):
-                    print(
-                        "knowledge_l2.title_id column missing (apply postgres_ddl.sql)",
-                        file=sys.stderr,
-                    )
+                if not _require_knowledge_l2_schema(cur):
                     return 4
                 cur.execute(
                     "SELECT id::text FROM knowledge_l1 ORDER BY created_at DESC NULLS LAST LIMIT 1"
@@ -173,11 +192,7 @@ def run_all(query: str) -> int:
     try:
         with _pg_connect() as conn:
             with conn.cursor() as cur:
-                if not _check_title_id_column(cur):
-                    print(
-                        "knowledge_l2.title_id column missing (apply postgres_ddl.sql)",
-                        file=sys.stderr,
-                    )
+                if not _require_knowledge_l2_schema(cur):
                     return 4
 
                 cur.execute("SELECT COUNT(*) FROM knowledge_l2 WHERE title_id IS NOT NULL")

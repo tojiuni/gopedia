@@ -47,6 +47,7 @@ def main() -> int:
                 "l2_id": payload.get("l2_id"),
                 "l3_id": payload.get("l3_id"),
                 "section_id": payload.get("section_id"),
+                "section_type": payload.get("section_type"),
                 "keyword_ids": payload.get("keyword_ids"),
                 "version": payload.get("version"),
                 "version_id": payload.get("version_id"),
