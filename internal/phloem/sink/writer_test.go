@@ -75,6 +75,31 @@ func TestSplitSentencesEnglishKeepsMarkdownLinkIntact(t *testing.T) {
 	}
 }
 
+func TestSplitSentencesEnglishKeepsFloatsAndAbbrevs(t *testing.T) {
+	in := "The default is 0.12. Extracts the data (e.g., # headers). It uses kss."
+	got := splitSentencesEnglish(in)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 sentences, got %d: %#v", len(got), got)
+	}
+	if !strings.Contains(got[0], "0.12") {
+		t.Fatalf("expected 0.12 in first sentence, got: %q", got[0])
+	}
+	if !strings.Contains(got[1], "e.g.,") {
+		t.Fatalf("expected e.g., in second sentence, got: %q", got[1])
+	}
+}
+
+func TestSplitSentencesEnglishKeepsFileExtensions(t *testing.T) {
+	in := "Iterates through all files (e.g., *.md)."
+	got := splitSentencesEnglish(in)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 sentence, got %d: %#v", len(got), got)
+	}
+	if !strings.Contains(got[0], "*.md") {
+		t.Fatalf("expected *.md in sentence, got: %q", got[0])
+	}
+}
+
 func TestSplitSentencesEnglishKeepsOrderedListMarkerIntact(t *testing.T) {
 	in := "1. **Verify (발아)**: 최소 단위 Root(소스)."
 	got := splitSentencesEnglish(in)

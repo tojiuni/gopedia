@@ -22,10 +22,14 @@ _RE_SEMVER = re.compile(r"\bv\d+(?:\.\d+)+")
 _RE_SECTION_NUM = re.compile(r"\d+\.\d+\.\d+(?:~\d+\.\d+\.\d+)?")
 # Common doc/code path endings (path/to/file.md)
 _RE_FILE_EXT = re.compile(
-    r"(?<![\w/])(?:[\w.-]+/)*[\w.-]+\.(?:md|MD|go|py|txt|yml|yaml|json|proto)\b"
+    r"(?<![\w/])(?:[\w.*-]+/)*[\w.*-]+\.(?:md|MD|go|py|txt|yml|yaml|json|proto)\b"
 )
 # Ordered list markers at the start of a line (e.g., "1.", " 2.")
 _RE_LIST_MARKER = re.compile(r"(?m)^\s{0,3}\d+\.")
+# Floats
+_RE_FLOAT = re.compile(r"\d+\.\d+")
+# Abbreviations
+_RE_ABBREV = re.compile(r"(?i)\b(?:e\.g\.|i\.e\.|etc\.)")
 
 _PATTERN_ORDER: List[Tuple[str, re.Pattern[str]]] = [
     ("mdlink", _RE_MD_LINK),
@@ -34,6 +38,8 @@ _PATTERN_ORDER: List[Tuple[str, re.Pattern[str]]] = [
     ("section", _RE_SECTION_NUM),
     ("file", _RE_FILE_EXT),
     ("list_marker", _RE_LIST_MARKER),
+    ("float", _RE_FLOAT),
+    ("abbrev", _RE_ABBREV),
 ]
 
 

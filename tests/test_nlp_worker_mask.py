@@ -96,3 +96,21 @@ def test_external_skill_md_if_present() -> None:
         for _, o in reps:
             if needle in o:
                 _assert_each_protected_in_single_sentence(sents, [o])
+
+def test_mask_float_and_abbrev() -> None:
+    text = "Ratio is 0.12. Extracts the data (e.g., # headers). It uses kss."
+    masked, reps = mask_for_sentence_split(text)
+    assert len(reps) >= 2
+    origs = [orig for _, orig in reps]
+    assert "0.12" in origs
+    assert "e.g." in origs
+    sents = _pipeline(text)
+    _assert_each_protected_in_single_sentence(sents, ["0.12", "e.g."])
+
+def test_mask_file_extension_with_asterisk() -> None:
+    text = "Iterates through all files (e.g., `*.md`), attaching data."
+    masked, reps = mask_for_sentence_split(text)
+    origs = [orig for _, orig in reps]
+    assert "*.md" in origs
+    sents = _pipeline(text)
+    _assert_each_protected_in_single_sentence(sents, ["*.md", "e.g."])

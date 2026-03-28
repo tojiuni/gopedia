@@ -25,9 +25,11 @@ var (
 	reMaskMdLink  = regexp.MustCompile(`!?\[[^\]]*\]\([^)]*\)`)
 	reMaskURL     = regexp.MustCompile(`https?://[^\s\]>]+`)
 	reMaskSemver  = regexp.MustCompile(`\bv\d+(?:\.\d+)+`)
-	reMaskSection    = regexp.MustCompile(`\d+\.\d+\.\d+(?:~\d+\.\d+\.\d+)?`)
-	reMaskFileExt    = regexp.MustCompile(`(?i)(?:[\w.-]+/)*[\w.-]+\.(?:md|go|py|txt|yml|yaml|json|proto)\b`)
+	reMaskSection = regexp.MustCompile(`\d+\.\d+\.\d+(?:~\d+\.\d+\.\d+)?`)
+	reMaskFileExt = regexp.MustCompile(`(?i)(?:[\w.*-]+/)*[\w.*-]+\.(?:md|go|py|txt|yml|yaml|json|proto)\b`)
 	reMaskListMarker = regexp.MustCompile(`(?m)^\s{0,3}\d+\.`)
+	reMaskFloat      = regexp.MustCompile(`\d+\.\d+`)
+	reMaskAbbrev     = regexp.MustCompile(`(?i)\b(?:e\.g\.|i\.e\.|etc\.)`)
 )
 
 func validSectionBounds(text string, start, end int) bool {
@@ -109,6 +111,12 @@ func maskForSentenceSplit(text string) (string, []maskReplacement) {
 		if !validListMarkerBounds(text, loc[0], loc[1]) {
 			continue
 		}
+		add(loc[0], loc[1])
+	}
+	for _, loc := range reMaskFloat.FindAllStringIndex(text, -1) {
+		add(loc[0], loc[1])
+	}
+	for _, loc := range reMaskAbbrev.FindAllStringIndex(text, -1) {
 		add(loc[0], loc[1])
 	}
 	if len(cand) == 0 {
