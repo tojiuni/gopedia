@@ -68,9 +68,16 @@ def _format_block(section_id: str, meta: dict[str, Any], l3_items: List[Tuple[An
 
     lines: List[str] = []
     for _so, text in l3_items:
-        if text is None or not str(text).strip():
+        if text is None:
             continue
-        lines.append(str(text).strip())
+        # Preserve indentation for code blocks, but we can right-strip newlines
+        s_text = str(text)
+        if not s_text.strip():
+            continue
+        if sid.startswith("c") or bt == "code":
+            lines.append(s_text.rstrip("\r\n"))
+        else:
+            lines.append(s_text.strip())
 
     if sid.startswith("t") or bt == "table":
         return _format_table(meta, lines)
@@ -78,6 +85,22 @@ def _format_block(section_id: str, meta: dict[str, Any], l3_items: List[Tuple[An
         return _format_code(meta, lines)
     if sid.startswith("i") or bt == "image":
         return "\n".join(lines)
+        
+    if sid.startswith("s") or sid.startswith("o") or bt in ("heading", "ordered"):
+        if lines:
+            if lines[0].strip().startswith("#"):
+                # Always put a blank line after the heading
+                heading = lines[0].strip()
+                body = " ".join(lines[1:])
+                return heading + "\n\n" + body if body else heading
+            
+            if sid.startswith("o") or bt == "ordered":
+                # Ordered lists typically shouldn't be smushed together if they are different items, 
+                # but an o* chunk represents ONE item. So its sentences can be joined by space.
+                return " ".join(lines)
+                
+            return " ".join(lines)
+            
     if lines:
         return "\n\n".join(lines)
     return ""
