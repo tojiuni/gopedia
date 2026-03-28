@@ -137,6 +137,9 @@ def test_retrieve_and_enrich_returns_context() -> None:
 
     # Avoid downloading CrossEncoder weights in CI unless explicitly enabled.
     os.environ.setdefault("GOPEDIA_RERANK", "0")
+    
+    # Override the vector name for testing as the sample collection might not have it
+    os.environ["QDRANT_VECTOR_NAME"] = ""
 
     conninfo = (
         f"host={os.environ.get('POSTGRES_HOST','')} "
