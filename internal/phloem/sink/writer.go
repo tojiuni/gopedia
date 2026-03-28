@@ -22,6 +22,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	pb "gopedia/core/proto/gen/go"
 	"gopedia/internal/phloem/chunker"
+	"gopedia/internal/phloem/codesplitter"
 	"gopedia/internal/phloem/embedder"
 	"gopedia/internal/phloem/nlpworker"
 	"gopedia/internal/phloem/types"
@@ -242,7 +243,15 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 
 			var sentences []string
 			switch secType {
-			case types.SectionTypeCode, types.SectionTypeImage:
+			case types.SectionTypeCode:
+				lang := ""
+				if c.SourceMetadata != nil {
+					if v, ok := c.SourceMetadata["language"].(string); ok {
+						lang = v
+					}
+				}
+				sentences = codesplitter.SplitToL3(c.Text, lang)
+			case types.SectionTypeImage:
 				if t := strings.TrimSpace(c.Text); t != "" {
 					sentences = []string{t}
 				}
@@ -375,15 +384,15 @@ func (s *DefaultSink) upsertL3Point(ctx context.Context, collection, pointID str
 		secType = types.SectionTypeHeading
 	}
 	payload := map[string]interface{}{
-		"l1_id":         item.l1ID.String(),
-		"l2_id":         item.l2ID.String(),
-		"l3_id":         item.l3ID.String(),
-		"section_id":    item.sectionID,
-		"section_type":  secType,
-		"version_id":    item.versionID,
-		"keyword_ids":   keywordIDs,
-		"source_type":   st,
-		"project_id":    projectID,
+		"l1_id":        item.l1ID.String(),
+		"l2_id":        item.l2ID.String(),
+		"l3_id":        item.l3ID.String(),
+		"section_id":   item.sectionID,
+		"section_type": secType,
+		"version_id":   item.versionID,
+		"keyword_ids":  keywordIDs,
+		"source_type":  st,
+		"project_id":   projectID,
 	}
 	points := []*qdrant.PointStruct{{
 		Id:      qdrant.NewID(qid),
@@ -601,8 +610,8 @@ func ensurePipelineVersion(ctx context.Context, pg *pgxpool.Pool) (int64, error)
 	}
 	preMeta := map[string]any{
 		"OPENAI_EMBEDDING_MODEL": embedModel,
-		"OPENAI_API_KEY_SET":    os.Getenv("OPENAI_API_KEY") != "",
-		"QDRANT_COLLECTION":     os.Getenv("QDRANT_COLLECTION"),
+		"OPENAI_API_KEY_SET":     os.Getenv("OPENAI_API_KEY") != "",
+		"QDRANT_COLLECTION":      os.Getenv("QDRANT_COLLECTION"),
 	}
 	byteaMetaJSON, _ := json.Marshal(byteaMeta)
 	preMetaJSON, _ := json.Marshal(preMeta)
@@ -625,6 +634,7 @@ func ensurePipelineVersion(ctx context.Context, pg *pgxpool.Pool) (int64, error)
 // sentenceSplitMaskedRe splits on Latin/CJK sentence punctuation after maskForSentenceSplit.
 var sentenceSplitMaskedRe = regexp.MustCompile(`[.!?。！？…]+`)
 var keywordRe = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9_-]{2,}`)
+
 // mdHeadingLineRe matches a single markdown heading line (same rule as chunker/heading.go).
 var mdHeadingLineRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 

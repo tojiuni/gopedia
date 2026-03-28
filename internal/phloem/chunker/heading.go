@@ -108,15 +108,10 @@ func extractMarkdownSections(content string, flat []types.FlatTOCItem) map[strin
 			continue
 		}
 
-		// Section ends at the next heading with level <= current level.
+		// Section ends at the next heading (any level) to prevent overlapping chunks.
 		end := len(lines)
 		for j := loc.lineIdx + 1; j < len(lines); j++ {
-			m := mdHeadingRe.FindStringSubmatch(strings.TrimSpace(lines[j]))
-			if m == nil {
-				continue
-			}
-			level := len(m[1])
-			if level <= loc.level {
+			if mdHeadingRe.MatchString(strings.TrimSpace(lines[j])) {
 				end = j
 				break
 			}

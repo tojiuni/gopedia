@@ -66,8 +66,8 @@ End.
 	if !strings.Contains(intro.Text, "Intro paragraph.") {
 		t.Fatalf("intro text missing body:\n%s", intro.Text)
 	}
-	if !strings.Contains(intro.Text, "## Goals") || !strings.Contains(intro.Text, "## Implementation") {
-		t.Fatalf("intro text missing subheadings:\n%s", intro.Text)
+	if strings.Contains(intro.Text, "## Goals") || strings.Contains(intro.Text, "## Implementation") {
+		t.Fatalf("intro text should NOT include subheadings under zero-overlap strategy:\n%s", intro.Text)
 	}
 	if strings.Contains(intro.Text, "# Appendix") {
 		t.Fatalf("intro text should not include next top-level section:\n%s", intro.Text)
