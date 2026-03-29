@@ -1,7 +1,6 @@
 package codesplitter
 
 import (
-	"strings"
 	"testing"
 )
 

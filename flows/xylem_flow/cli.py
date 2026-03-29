@@ -69,13 +69,14 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     try:
         with _pg_connect() as conn:
-            enriched = retrieve_and_enrich(
-                query,
-                conn,
+            kw: dict = dict(
                 final_limit=args.limit,
                 neighbor_window=args.neighbor_window,
                 context_level=args.context_level,
             )
+            if getattr(args, "project_id", None) is not None:
+                kw["project_id"] = int(args.project_id)
+            enriched = retrieve_and_enrich(query, conn, **kw)
     except Exception as e:
         print(f"search failed: {e}", file=sys.stderr)
         return 2
@@ -150,6 +151,12 @@ def main(argv: list[str] | None = None) -> int:
         "--restore-l1",
         action="store_true",
         help="Also restore full markdown for L1 of the top hit",
+    )
+    p_search.add_argument(
+        "--project-id",
+        type=int,
+        default=None,
+        help="Load Qdrant/PG settings from projects.source_metadata and filter Qdrant by project_id",
     )
     p_search.set_defaults(func=cmd_search)
 

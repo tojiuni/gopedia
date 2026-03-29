@@ -75,7 +75,17 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		}
 		ctx, cancel := context.WithTimeout(c, 5*time.Minute)
 		defer cancel()
-		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.cli", "search", "--query", q, "--format", "markdown")
+		args := []string{"search", "--query", q, "--format", "markdown"}
+		if pid := strings.TrimSpace(c.QueryParam("project_id")); pid != "" {
+			if _, err := strconv.ParseInt(pid, 10, 64); err != nil {
+				return SearchResponse{}, fuego.BadRequestError{
+					Title:  "Bad Request",
+					Detail: "invalid project_id (expected integer)",
+				}
+			}
+			args = append(args, "--project-id", pid)
+		}
+		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.cli", args...)
 		resp := SearchResponse{
 			Markdown: strings.TrimSpace(string(out)),
 			Stderr:   string(stderr),
@@ -131,7 +141,17 @@ func Run(addr string) error {
 	if err != nil {
 		return err
 	}
-	s := fuego.NewServer(fuego.WithAddr(addr))
+	// Fuego defaults Read/WriteTimeout to 30s; ingest/search subprocesses can run much longer.
+	const httpLongTimeout = 40 * time.Minute
+	s := fuego.NewServer(
+		fuego.WithAddr(addr),
+		func(sv *fuego.Server) {
+			sv.Server.ReadTimeout = httpLongTimeout
+			sv.Server.ReadHeaderTimeout = httpLongTimeout
+			sv.Server.WriteTimeout = httpLongTimeout
+			sv.Server.IdleTimeout = httpLongTimeout
+		},
+	)
 	Register(s, py)
 	return s.Run()
 }

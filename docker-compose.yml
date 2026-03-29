@@ -28,6 +28,8 @@ services:
       - QDRANT_PORT=${QDRANT_PORT:-6333}
       - QDRANT_GRPC_PORT=${QDRANT_GRPC_PORT:-6334}
       - QDRANT_COLLECTION=${QDRANT_COLLECTION:-gopedia_markdown}
+      # Phloem EnsureQdrantCollection uses a single default (unnamed) vector; empty avoids Xylem "using: dense-gopedia" mismatch.
+      - QDRANT_VECTOR_NAME=
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_EMBEDDING_MODEL=${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       - GOPEDIA_REPO_ROOT=/app

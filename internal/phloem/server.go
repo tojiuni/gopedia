@@ -95,7 +95,7 @@ func (s *Server) RegisterProject(ctx context.Context, req *pb.RegisterProjectReq
 		VALUES ($1, $2, $3, $4::jsonb)
 		ON CONFLICT (root_path) DO UPDATE SET
 			name = EXCLUDED.name,
-			source_metadata = EXCLUDED.source_metadata,
+			source_metadata = COALESCE(projects.source_metadata, '{}'::jsonb) || EXCLUDED.source_metadata,
 			modified_at = now()
 		RETURNING id, machine_id`,
 		machineID, name, root, metaJSON,

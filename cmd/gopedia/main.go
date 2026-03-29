@@ -21,7 +21,7 @@ import (
 func apiBase() string {
 	b := strings.TrimSpace(os.Getenv("GOPEDIA_API_URL"))
 	if b == "" {
-		b = "http://127.0.0.1:8787"
+		b = "http://127.0.0.1:18787"
 	}
 	return strings.TrimRight(b, "/")
 }

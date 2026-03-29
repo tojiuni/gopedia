@@ -23,6 +23,7 @@ from property.root_props.markdown_loader import (
     load_markdown,
     register_project,
 )
+from property.root_props.project_metadata import build_register_project_metadata
 try:
     from core.ontology_so import sync_document_to_typedb
 except ImportError:
@@ -49,6 +50,7 @@ def main() -> None:
             channel,
             str(project_root),
             name=project_root.name,
+            metadata=build_register_project_metadata(),
         )
         project_id_str = str(project_id) if project_id else ""
         project_mid_str = str(project_machine_id) if project_machine_id else ""

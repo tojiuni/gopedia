@@ -58,13 +58,24 @@ def qdrant_search_l3_points(
     collection: str,
     limit: int = 5,
     vector_name: Optional[str] = None,
+    project_id_filter: Optional[int] = None,
 ) -> List[Any]:
     from qdrant_client import QdrantClient
+    from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
     qc = QdrantClient(host=host, port=port)
     kwargs: dict = {}
     if vector_name:
         kwargs["using"] = vector_name
+    if project_id_filter is not None:
+        kwargs["query_filter"] = Filter(
+            must=[
+                FieldCondition(
+                    key="project_id",
+                    match=MatchValue(value=int(project_id_filter)),
+                )
+            ]
+        )
     result = qc.query_points(
         collection_name=collection,
         query=query_vector,
@@ -140,6 +151,7 @@ def fetch_rich_context(
     neighbor_window: int = 2000,
     level: int = 1,
     max_tokens: Optional[int] = None,
+    embedding_model: Optional[str] = None,
 ) -> dict:
     """
     level:
@@ -225,7 +237,9 @@ def fetch_rich_context(
         ctx["l1_toc"] = l1_toc_str
 
     if max_tokens is not None and max_tokens > 0:
-        embed_model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        embed_model = embedding_model or os.environ.get(
+            "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+        )
         fixed_keys = ("breadcrumb", "l1_title", "l2_summary", "section_heading", "matched_content")
         if level >= 3:
             fixed_keys = fixed_keys + ("l1_summary", "l1_toc")
@@ -292,22 +306,42 @@ def retrieve_and_enrich(
     rerank: Optional[bool] = None,
     cross_encoder_model: Optional[str] = None,
     limit: Optional[int] = None,
+    project_id: Optional[int] = None,
+    embedding_model: Optional[str] = None,
 ) -> List[dict]:
     """If ``limit`` is passed (legacy), it overrides ``final_limit``."""
+    from flows.xylem_flow.project_config import (
+        fetch_project_source_metadata,
+        resolve_retrieval_settings,
+    )
+
     if limit is not None:
         final_limit = int(limit)
-    host = qdrant_host or os.environ.get("QDRANT_HOST", "localhost")
-    port = qdrant_port if qdrant_port is not None else int(os.environ.get("QDRANT_PORT", "6333"))
-    coll = collection or os.environ.get("QDRANT_COLLECTION", "gopedia")
-    vn = vector_name if vector_name is not None else (os.environ.get("QDRANT_VECTOR_NAME") or None)
 
-    if rerank is None:
-        v = os.environ.get("GOPEDIA_RERANK", "0").strip().lower()
-        rerank = v in ("1", "true", "yes", "on")
+    meta: dict[str, str] = {}
+    if project_id is not None:
+        meta = fetch_project_source_metadata(conn, project_id)
 
-    vec = embed_query_openai(query)
+    resolved = resolve_retrieval_settings(
+        meta=meta,
+        qdrant_host=qdrant_host,
+        qdrant_port=qdrant_port,
+        collection=collection,
+        vector_name=vector_name,
+        embedding_model=embedding_model,
+        rerank=rerank,
+    )
+
+    use_rerank = resolved.rerank
+    vec = embed_query_openai(query, model=resolved.embedding_model)
     hits = qdrant_search_l3_points(
-        vec, host=host, port=port, collection=coll, limit=candidate_limit, vector_name=vn
+        vec,
+        host=resolved.qdrant_host,
+        port=resolved.qdrant_port,
+        collection=resolved.collection,
+        limit=candidate_limit,
+        vector_name=resolved.vector_name,
+        project_id_filter=project_id,
     )
     rows: List[Tuple[Any, str]] = []
     for h in hits:
@@ -317,7 +351,7 @@ def retrieve_and_enrich(
             continue
         rows.append((h, str(lid)))
 
-    if rerank and len(rows) > final_limit:
+    if use_rerank and len(rows) > final_limit:
         rows = _rerank_hits(query, conn, rows, final_limit, cross_encoder_model)
     else:
         rows = rows[:final_limit]
@@ -330,6 +364,7 @@ def retrieve_and_enrich(
             neighbor_window=neighbor_window,
             level=context_level,
             max_tokens=max_tokens,
+            embedding_model=resolved.embedding_model,
         )
         if not ctx:
             continue
