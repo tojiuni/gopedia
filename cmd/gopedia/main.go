@@ -1,0 +1,159 @@
+// Gopedia CLI: HTTP client to the Fuego API and local server command.
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"gopedia/internal/api"
+)
+
+func apiBase() string {
+	b := strings.TrimSpace(os.Getenv("GOPEDIA_API_URL"))
+	if b == "" {
+		b = "http://127.0.0.1:8787"
+	}
+	return strings.TrimRight(b, "/")
+}
+
+func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	root := &cobra.Command{
+		Use:   "gopedia",
+		Short: "Gopedia CLI (Fuego API client and local server)",
+	}
+
+	serverCmd := &cobra.Command{
+		Use:   "server",
+		Short: "Run the Gopedia Fuego HTTP API",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			addr, _ := cmd.Flags().GetString("addr")
+			if addr == "" {
+				addr = os.Getenv("GOPEDIA_HTTP_ADDR")
+			}
+			if addr == "" {
+				addr = "127.0.0.1:8787"
+			}
+			slog.Info("starting Gopedia API", "addr", addr)
+			return api.Run(addr)
+		},
+	}
+	serverCmd.Flags().String("addr", "", "listen address (default: GOPEDIA_HTTP_ADDR or 127.0.0.1:8787)")
+
+	serviceCmd := &cobra.Command{
+		Use:     "service",
+		Short:   "Manage local services (alias: use `gopedia server`)",
+		Aliases: []string{"svc"},
+	}
+	serviceStart := &cobra.Command{
+		Use:   "start",
+		Short: "Start the Fuego API server (same as `gopedia server`)",
+		RunE:  serverCmd.RunE,
+	}
+	serviceStart.Flags().String("addr", "", "listen address (default: GOPEDIA_HTTP_ADDR or 127.0.0.1:8787)")
+	serviceCmd.AddCommand(serviceStart)
+
+	searchCmd := &cobra.Command{
+		Use:   "search QUERY",
+		Short: "Semantic search via GET /api/search",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			base := apiBase()
+			q := url.QueryEscape(args[0])
+			client := &http.Client{Timeout: 6 * time.Minute}
+			resp, err := client.Get(base + "/api/search?q=" + q)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("api %s: %s", resp.Status, string(body))
+			}
+			var out api.SearchResponse
+			if err := json.Unmarshal(body, &out); err != nil {
+				return fmt.Errorf("decode response: %w", err)
+			}
+			if out.Stderr != "" {
+				fmt.Fprint(os.Stderr, out.Stderr)
+			}
+			if out.Error != "" {
+				return fmt.Errorf("search error: %s", out.Error)
+			}
+			fmt.Println(out.Markdown)
+			return nil
+		},
+	}
+
+	ingestCmd := &cobra.Command{
+		Use:   "ingest PATH",
+		Short: "Ingest markdown path via POST /api/ingest",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			base := apiBase()
+			payload, err := json.Marshal(map[string]string{"path": args[0]})
+			if err != nil {
+				return err
+			}
+			client := &http.Client{Timeout: 35 * time.Minute}
+			resp, err := client.Post(base+"/api/ingest", "application/json", bytes.NewReader(payload))
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("api %s: %s", resp.Status, string(body))
+			}
+			var out api.IngestResponse
+			if err := json.Unmarshal(body, &out); err != nil {
+				return fmt.Errorf("decode response: %w", err)
+			}
+			if out.Stdout != "" {
+				fmt.Print(out.Stdout)
+			}
+			if out.Stderr != "" {
+				fmt.Fprint(os.Stderr, out.Stderr)
+			}
+			if !out.OK || out.Error != "" {
+				if out.Error != "" {
+					return fmt.Errorf("ingest error: %s", out.Error)
+				}
+				return fmt.Errorf("ingest failed")
+			}
+			return nil
+		},
+	}
+
+	projectCmd := &cobra.Command{
+		Use:   "project",
+		Short: "Project workspace helpers",
+	}
+	projectInit := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize a Gopedia-linked workspace (placeholder)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println("gopedia project init: configure GOPEDIA_API_URL and run `gopedia server`, then `gopedia ingest <path>`.")
+			return nil
+		},
+	}
+	projectCmd.AddCommand(projectInit)
+
+	root.AddCommand(serverCmd, serviceCmd, searchCmd, ingestCmd, projectCmd)
+
+	if err := root.Execute(); err != nil {
+		slog.Error("gopedia", "err", err)
+		os.Exit(1)
+	}
+}

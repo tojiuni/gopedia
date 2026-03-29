@@ -4,32 +4,39 @@
 # DB (PostgreSQL, TypeDB, Qdrant) are installed separately; set POSTGRES_HOST etc. in .env.
 
 services:
-  phloem-flow:
-    image: registry.toji.homes/gopedia-phloem:0.0.1
-    build: .
+  gopedia:
+    build:
+      context: .
+      dockerfile: Dockerfile
     env_file: .env
     environment:
       - GOPEDIA_SERVICE_NAME=${GOPEDIA_SERVICE_NAME:-gopedia}
       - GOPEDIA_LOG_LEVEL=${GOPEDIA_LOG_LEVEL:-info}
-      - GOPEDIA_PHLOEM_GRPC_ADDR=0.0.0.0:50051
       - GOPEDIA_IDENTITY_WORKER_ID=${GOPEDIA_IDENTITY_WORKER_ID:-0}
-      - POSTGRES_HOST=${POSTGRES_HOST}
+      - GOPEDIA_HTTP_ADDR=0.0.0.0:18787
+      - GOPEDIA_PHLOEM_GRPC_ADDR=0.0.0.0:50051
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres_db}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-gopedia}
       - POSTGRES_SSLMODE=${POSTGRES_SSLMODE:-disable}
-      - TYPEDB_HOST=${TYPEDB_HOST}
+      - TYPEDB_HOST=${TYPEDB_HOST:-typedb}
       - TYPEDB_PORT=${TYPEDB_PORT:-1729}
       - TYPEDB_DATABASE=${TYPEDB_DATABASE:-gopedia}
-      - QDRANT_HOST=${QDRANT_HOST}
+      - QDRANT_HOST=${QDRANT_HOST:-qdrant}
       - QDRANT_PORT=${QDRANT_PORT:-6333}
       - QDRANT_GRPC_PORT=${QDRANT_GRPC_PORT:-6334}
       - QDRANT_COLLECTION=${QDRANT_COLLECTION:-gopedia_markdown}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_EMBEDDING_MODEL=${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      - GOPEDIA_REPO_ROOT=/app
     ports:
+      - "18787:18787"
       - "50051:50051"
+    volumes:
+      - .:/app
+      - /morphogen:/morphogen
     networks:
       - neunexus
       - traefik-net

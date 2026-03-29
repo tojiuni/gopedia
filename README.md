@@ -64,6 +64,14 @@ We are currently transitioning into the **Rev2 (Growth & Fruition)** phase.
 
 ---
 
+## HTTP API + CLI (Fuego)
+
+- **API server**: `go run ./cmd/api` — listens on `GOPEDIA_HTTP_ADDR` (default `127.0.0.1:8787`). Routes: `GET /api/health`, `GET /api/search?q=...`, `POST /api/ingest` with JSON `{"path":"/abs/path"}`.
+- **CLI client**: `go run ./cmd/gopedia …` — talks to `GOPEDIA_API_URL` (default `http://127.0.0.1:8787`). Examples: `gopedia server`, `gopedia search "Introduction"`, `gopedia ingest /path/to/project`.
+- **Python**: the API runs `python3 -m property.root_props.run` and `python3 -m flows.xylem_flow.cli` from the repo root. Set `GOPEDIA_REPO_ROOT` if `go.mod` is not discoverable from the process cwd.
+
+---
+
 ## 📚 Documentation
 
 For detailed architecture diagrams, pipeline specifications, and database schemas, please refer to the **[Rev2 Design Documentation](./doc/design/Rev2/01-overview.md)**.
