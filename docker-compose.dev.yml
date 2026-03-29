@@ -1,0 +1,119 @@
+# Local dev: PostgreSQL, TypeDB, Qdrant (+ optional Gopedia app) on one bridge network.
+# No external neunexus/traefik. Service hostnames match production-style defaults (postgres_db, typedb, qdrant).
+#
+# DBs only:
+#   docker compose -f docker-compose.dev.yml --env-file .env up -d
+# With API + Phloem (same image as Dockerfile):
+#   docker compose -f docker-compose.dev.yml --env-file .env --profile app up -d
+#
+# E2E scripts: export DOCKER_NETWORK_EXTERNAL=gopedia-dev (fixed network name below).
+# TypeDB default: typedb/typedb:3.8.2 (override with TYPEDB_IMAGE; see doc/local-dev-docker.md).
+
+name: gopedia-local
+
+services:
+  postgres_db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin_gopedia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-gopedia}
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
+    volumes:
+      - gopedia_dev_pg_data:/var/lib/postgresql/data
+    networks:
+      - gopedia-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "${QDRANT_PUBLISH_HTTP:-6333}:6333"
+      - "${QDRANT_PUBLISH_GRPC:-6334}:6334"
+    volumes:
+      - gopedia_dev_qdrant_data:/qdrant/storage
+    networks:
+      - gopedia-dev
+    # debian-slim has no curl; TCP check on REST port (bash is present).
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 20s
+
+  typedb:
+    image: ${TYPEDB_IMAGE:-typedb/typedb:3.8.2}
+    ports:
+      - "${TYPEDB_PUBLISH_PORT:-1729}:1729"
+      - "${TYPEDB_PUBLISH_CONSOLE:-8000}:8000"
+    volumes:
+      - gopedia_dev_typedb_data:/var/lib/typedb/data
+    networks:
+      - gopedia-dev
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/1729'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  gopedia:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      - GOPEDIA_SERVICE_NAME=${GOPEDIA_SERVICE_NAME:-gopedia}
+      - GOPEDIA_LOG_LEVEL=${GOPEDIA_LOG_LEVEL:-info}
+      - GOPEDIA_IDENTITY_WORKER_ID=${GOPEDIA_IDENTITY_WORKER_ID:-0}
+      - GOPEDIA_HTTP_ADDR=0.0.0.0:18787
+      - GOPEDIA_PHLOEM_GRPC_ADDR=0.0.0.0:50051
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres_db}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-gopedia}
+      - POSTGRES_SSLMODE=${POSTGRES_SSLMODE:-disable}
+      - TYPEDB_HOST=${TYPEDB_HOST:-typedb}
+      - TYPEDB_PORT=${TYPEDB_PORT:-1729}
+      - TYPEDB_DATABASE=${TYPEDB_DATABASE:-gopedia}
+      - QDRANT_HOST=${QDRANT_HOST:-qdrant}
+      - QDRANT_PORT=${QDRANT_PORT:-6333}
+      - QDRANT_GRPC_PORT=${QDRANT_GRPC_PORT:-6334}
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-gopedia_markdown}
+      - QDRANT_VECTOR_NAME=
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_EMBEDDING_MODEL=${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      - GOPEDIA_REPO_ROOT=/app
+    ports:
+      - "${GOPEDIA_PUBLISH_HTTP:-18787}:18787"
+      - "${GOPEDIA_PUBLISH_GRPC:-50051}:50051"
+    volumes:
+      - .:/app
+    networks:
+      - gopedia-dev
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      typedb:
+        condition: service_healthy
+
+networks:
+  gopedia-dev:
+    name: gopedia-dev
+    driver: bridge
+
+volumes:
+  gopedia_dev_pg_data:
+  gopedia_dev_qdrant_data:
+  gopedia_dev_typedb_data:

@@ -2,6 +2,8 @@
 
 현재 Ver1 기준으로 **DB 초기화**와 **Transpiration E2E 테스트**를 돌리기 위한 최소 플로우만 정리한 문서입니다.
 
+**로컬 PC에서 DB까지 한 번에 띄우기**(neunexus 없이): [local-dev-docker.md](local-dev-docker.md), `docker-compose.dev.yml`, `.env.local.example`.
+
 ---
 
 ## 1. 사전 조건
@@ -140,4 +142,6 @@ python scripts/verify_transpiration.py "Introduction"
 | `scripts/run_transpiration_e2e.sh` | 샘플 마크다운 인게스트 + `verify_transpiration.py` 실행 |
 | `scripts/verify_transpiration.py` | OpenAI 임베딩 → Qdrant 검색 → TypeDB fetch 로 Transpiration 검증 |
 | `doc/transpiration-usage.md` | Transpiration 흐름 및 Efficiency/Speed 성공 기준 |
+| `doc/local-dev-docker.md` | 로컬 전용 `docker-compose.dev.yml` 스택 및 `DOCKER_NETWORK_EXTERNAL=gopedia-dev` |
+| `docker-compose.dev.yml` | 로컬 Postgres + TypeDB + Qdrant (+ 선택 `app` 프로필로 Gopedia) |
 
