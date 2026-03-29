@@ -224,6 +224,7 @@ def fetch_rich_context(
         "breadcrumb": _breadcrumb(l1_title or "", section_heading or ""),
         "l1_id": l1_id or "",
         "l1_title": l1_title or "",
+        "l2_id": str(l2_id) if l2_id is not None else "",
         "l2_summary": l2_summary or "",
         "section_heading": section_heading or "",
         "l2_section_id": l2_section_id or "",
@@ -369,5 +370,18 @@ def retrieve_and_enrich(
         if not ctx:
             continue
         ctx["qdrant_score"] = getattr(h, "score", None)
+        payload = getattr(h, "payload", None) or {}
+        if hasattr(payload, "items"):
+            pd = dict(payload)
+        elif isinstance(payload, dict):
+            pd = payload
+        else:
+            pd = {}
+        if pd.get("project_id") is not None:
+            ctx["project_id"] = pd.get("project_id")
+        if pd.get("doc_id") is not None and pd.get("doc_id") != "":
+            ctx["doc_id"] = pd.get("doc_id")
+        if pd.get("l2_id") and not ctx.get("l2_id"):
+            ctx["l2_id"] = str(pd.get("l2_id"))
         out.append(ctx)
     return out

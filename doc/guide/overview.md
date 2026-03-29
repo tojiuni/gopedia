@@ -43,4 +43,5 @@ The [`Dockerfile`](../../Dockerfile) builds and runs the **`api`** binary only. 
 
 - [run.md](run.md) — step-by-step bring-up and smoke tests.
 - [install.md](install.md) — OS-specific Docker and toolchain setup.
+- [agent-interop.md](agent-interop.md) — JSON search (staged `detail` / sparse `fields`), ingest jobs, `/api/health/deps`, structured `failure` payloads.
 - [../docker/local-dev-docker.md](../docker/local-dev-docker.md) — Korean notes on the same dev compose file (duplicate topics in English here).

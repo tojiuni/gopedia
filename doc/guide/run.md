@@ -76,6 +76,35 @@ curl -s http://127.0.0.1:18787/api/health
 # Expect: {"status":"ok"}
 ```
 
+Dependency checks (for agents / ops):
+
+```bash
+curl -s http://127.0.0.1:18787/api/health/deps
+# Expect: {"status":"ok"|"degraded","deps":{"postgres":{...},"qdrant":{...},"typedb":{...},"phloem":{...}},...}
+```
+
+JSON search (machine-readable hits):
+
+```bash
+curl -s "http://127.0.0.1:18787/api/search?q=Introduction&format=json"
+```
+
+Compact JSON for agents (fewer fields; see [agent-interop.md](agent-interop.md) for presets and `fields=`):
+
+```bash
+curl -s "http://127.0.0.1:18787/api/search?q=Introduction&format=json&detail=summary"
+```
+
+Async ingest job:
+
+```bash
+curl -s -X POST http://127.0.0.1:18787/api/ingest/jobs \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: my-key-1" \
+  -d '{"path":"tests/fixtures/sample.md"}'
+# Then: curl -s http://127.0.0.1:18787/api/jobs/<job_id>
+```
+
 If you did not start the `app` profile, this will fail until you run the API on the host (see below).
 
 ---

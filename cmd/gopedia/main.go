@@ -71,15 +71,38 @@ func main() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			base := apiBase()
 			q := url.QueryEscape(args[0])
+			useJSON, _ := cmd.Flags().GetBool("json")
+			u := base + "/api/search?q=" + q
+			if useJSON {
+				u += "&format=json"
+				if d, _ := cmd.Flags().GetString("detail"); strings.TrimSpace(d) != "" {
+					u += "&detail=" + url.QueryEscape(strings.TrimSpace(d))
+				}
+				if f, _ := cmd.Flags().GetString("fields"); strings.TrimSpace(f) != "" {
+					u += "&fields=" + url.QueryEscape(strings.TrimSpace(f))
+				}
+			}
 			client := &http.Client{Timeout: 6 * time.Minute}
-			resp, err := client.Get(base + "/api/search?q=" + q)
+			resp, err := client.Get(u)
 			if err != nil {
 				return err
 			}
 			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
 			if resp.StatusCode != http.StatusOK {
 				return fmt.Errorf("api %s: %s", resp.Status, string(body))
+			}
+			if useJSON {
+				var v any
+				if err := json.Unmarshal(body, &v); err != nil {
+					return fmt.Errorf("decode response: %w", err)
+				}
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetEscapeHTML(false)
+				return enc.Encode(v)
 			}
 			var out api.SearchResponse
 			if err := json.Unmarshal(body, &out); err != nil {
@@ -95,6 +118,9 @@ func main() {
 			return nil
 		},
 	}
+	searchCmd.Flags().Bool("json", false, "Print full JSON response (GET /api/search?format=json)")
+	searchCmd.Flags().String("detail", "", "With --json: search detail preset (summary|standard|full); omit for full")
+	searchCmd.Flags().String("fields", "", "With --json: comma-separated result keys (overrides --detail)")
 
 	ingestCmd := &cobra.Command{
 		Use:   "ingest PATH",
@@ -102,6 +128,7 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			base := apiBase()
+			useJSON, _ := cmd.Flags().GetBool("json")
 			payload, err := json.Marshal(map[string]string{"path": args[0]})
 			if err != nil {
 				return err
@@ -112,9 +139,21 @@ func main() {
 				return err
 			}
 			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
 			if resp.StatusCode != http.StatusOK {
 				return fmt.Errorf("api %s: %s", resp.Status, string(body))
+			}
+			if useJSON {
+				var v any
+				if err := json.Unmarshal(body, &v); err != nil {
+					return fmt.Errorf("decode response: %w", err)
+				}
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetEscapeHTML(false)
+				return enc.Encode(v)
 			}
 			var out api.IngestResponse
 			if err := json.Unmarshal(body, &out); err != nil {
@@ -135,6 +174,7 @@ func main() {
 			return nil
 		},
 	}
+	ingestCmd.Flags().Bool("json", false, "Print full JSON response from POST /api/ingest")
 
 	projectCmd := &cobra.Command{
 		Use:   "project",

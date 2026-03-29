@@ -3,7 +3,7 @@ package api
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"log/slog"
 	"net"
 	"os"
@@ -37,17 +37,22 @@ type IngestRequest struct {
 
 // IngestResponse reports subprocess outcome.
 type IngestResponse struct {
-	OK     bool   `json:"ok"`
-	Stdout string `json:"stdout,omitempty"`
-	Stderr string `json:"stderr,omitempty"`
-	Error  string `json:"error,omitempty"`
+	OK        bool      `json:"ok"`
+	Stdout    string    `json:"stdout,omitempty"`
+	Stderr    string    `json:"stderr,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	Failure   *APIError `json:"failure,omitempty"`
+	RequestID string    `json:"request_id,omitempty"`
 }
 
 // SearchResponse is the JSON body for GET /api/search.
 type SearchResponse struct {
-	Markdown string `json:"markdown"`
-	Stderr   string `json:"stderr,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Markdown  string          `json:"markdown,omitempty"`
+	Results   json.RawMessage `json:"results,omitempty"`
+	Stderr    string          `json:"stderr,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	Failure   *APIError       `json:"failure,omitempty"`
+	RequestID string          `json:"request_id,omitempty"`
 }
 
 // HealthResponse is returned by GET /api/health.
@@ -57,6 +62,7 @@ type HealthResponse struct {
 
 // Register mounts /api routes on the given Fuego server using Python subprocesses.
 func Register(s *fuego.Server, py *runner.Runner) {
+	reg := newJobRegistry()
 	api := fuego.Group(s, "/api")
 
 	fuego.Get(api, "/health", func(c fuego.ContextNoBody) (HealthResponse, error) {
@@ -65,7 +71,28 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		fuego.OptionSummary("Liveness check"),
 	)
 
+	fuego.Get(api, "/health/deps", func(c fuego.ContextNoBody) (HealthDepsResponse, error) {
+		reqID := newRequestID(c)
+		deps := map[string]DepStatus{
+			"postgres": checkPostgres(),
+			"qdrant":   checkQdrant(),
+			"typedb":   checkTypeDB(),
+			"phloem":   checkPhloemGRPC(),
+		}
+		overall := "ok"
+		for _, d := range deps {
+			if d.Status == "error" {
+				overall = "degraded"
+				break
+			}
+		}
+		return HealthDepsResponse{Status: overall, Deps: deps, RequestID: reqID}, nil
+	},
+		fuego.OptionSummary("Dependency health (Postgres, Qdrant, TypeDB, Phloem gRPC)"),
+	)
+
 	fuego.Get(api, "/search", func(c fuego.ContextNoBody) (SearchResponse, error) {
+		reqID := newRequestID(c)
 		q := strings.TrimSpace(c.QueryParam("q"))
 		if q == "" {
 			return SearchResponse{}, fuego.BadRequestError{
@@ -73,9 +100,28 @@ func Register(s *fuego.Server, py *runner.Runner) {
 				Detail: "missing query parameter q",
 			}
 		}
+		format := strings.ToLower(strings.TrimSpace(c.QueryParam("format")))
+		if format == "" {
+			format = "markdown"
+		}
+		var resultKeys []string
+		if format == "json" {
+			keys, perr := parseSearchResultFields(c.QueryParam("detail"), c.QueryParam("fields"))
+			if perr != nil {
+				return SearchResponse{}, fuego.BadRequestError{
+					Title:  "Bad Request",
+					Detail: perr.Error(),
+				}
+			}
+			resultKeys = keys
+		}
 		ctx, cancel := context.WithTimeout(c, 5*time.Minute)
 		defer cancel()
-		args := []string{"search", "--query", q, "--format", "markdown"}
+		outFmt := "markdown"
+		if format == "json" {
+			outFmt = "json"
+		}
+		args := []string{"search", "--query", q, "--format", outFmt}
 		if pid := strings.TrimSpace(c.QueryParam("project_id")); pid != "" {
 			if _, err := strconv.ParseInt(pid, 10, 64); err != nil {
 				return SearchResponse{}, fuego.BadRequestError{
@@ -87,23 +133,45 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		}
 		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.cli", args...)
 		resp := SearchResponse{
-			Markdown: strings.TrimSpace(string(out)),
-			Stderr:   string(stderr),
+			Stderr:    string(stderr),
+			RequestID: reqID,
 		}
 		if err != nil {
 			resp.Error = err.Error()
-			slog.Warn("search subprocess failed", "err", err, "stderr", resp.Stderr)
-			return resp, fmt.Errorf("python search: %w", err)
+			resp.Failure = newAPIError("PYTHON_SEARCH_FAILED", err.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+			slog.Warn("search subprocess failed", "err", err, "stderr", resp.Stderr, "request_id", reqID)
+			return resp, nil
 		}
+		if format == "json" {
+			var raw []map[string]any
+			if uerr := json.Unmarshal(out, &raw); uerr != nil {
+				resp.Error = uerr.Error()
+				resp.Failure = newAPIError("SEARCH_JSON_PARSE", uerr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+				slog.Warn("search json parse failed", "err", uerr, "request_id", reqID)
+				return resp, nil
+			}
+			hits := normalizeSearchHits(raw)
+			encoded, merr := marshalSearchResults(hits, resultKeys)
+			if merr != nil {
+				resp.Error = merr.Error()
+				resp.Failure = newAPIError("SEARCH_RESULT_ENCODE", merr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+				slog.Warn("search results encode failed", "err", merr, "request_id", reqID)
+				return resp, nil
+			}
+			resp.Results = encoded
+			return resp, nil
+		}
+		resp.Markdown = strings.TrimSpace(string(out))
 		return resp, nil
 	},
-		fuego.OptionSummary("Semantic search + rich context (markdown)"),
+		fuego.OptionSummary("Semantic search (markdown or format=json; optional detail/fields for JSON)"),
 	)
 
 	fuego.Post(api, "/ingest", func(c fuego.ContextWithBody[IngestRequest]) (IngestResponse, error) {
+		reqID := newRequestID(c)
 		body, err := c.Body()
 		if err != nil {
-			return IngestResponse{OK: false, Error: err.Error()}, err
+			return IngestResponse{OK: false, Error: err.Error(), Failure: newAPIError("BAD_BODY", err.Error(), false, reqID, nil), RequestID: reqID}, nil
 		}
 		path := strings.TrimSpace(body.Path)
 		if path == "" {
@@ -116,19 +184,23 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		defer cancel()
 		out, stderr, err := py.RunModule(ctx, "property.root_props.run", path)
 		resp := IngestResponse{
-			OK:     err == nil,
-			Stdout: string(out),
-			Stderr: string(stderr),
+			OK:        err == nil,
+			Stdout:    string(out),
+			Stderr:    string(stderr),
+			RequestID: reqID,
 		}
 		if err != nil {
 			resp.Error = err.Error()
-			slog.Warn("ingest subprocess failed", "err", err, "stderr", resp.Stderr)
-			return resp, fmt.Errorf("python ingest: %w", err)
+			resp.Failure = newAPIError("PYTHON_INGEST_FAILED", err.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+			slog.Warn("ingest subprocess failed", "err", err, "stderr", resp.Stderr, "request_id", reqID)
+			return resp, nil
 		}
 		return resp, nil
 	},
 		fuego.OptionSummary("Ingest markdown path via Root → Phloem"),
 	)
+
+	registerJobRoutes(api, py, reg)
 }
 
 // Run creates a Fuego server on addr (e.g. "127.0.0.1:8787"), registers routes, and blocks until shutdown.
