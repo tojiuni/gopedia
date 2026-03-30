@@ -13,11 +13,12 @@ ENV/
 # Go
 bin/
 obj/
+doc/openapi.json
 
 # Docker
 .dockerignore
 /phloem
-
+gopedia
 # OS
 .DS_Store
 Thumbs.db

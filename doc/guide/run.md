@@ -25,6 +25,8 @@ export DOCKER_NETWORK_EXTERNAL=gopedia-dev
 
 before running shell scripts that use `docker run --network …` (for example [`scripts/run_fresh_ingestion_docker.sh`](../../scripts/run_fresh_ingestion_docker.sh)).
 
+> **Note:** `scripts/run_ingestion_docker.sh` hardcodes the network name `neunexus` and does **not** respect `DOCKER_NETWORK_EXTERNAL`. Use `run_fresh_ingestion_docker.sh` instead for `gopedia-dev` setups.
+
 **`QDRANT_COLLECTION`:** use one value consistently (for example `gopedia_markdown`) across `.env`, compose, and scripts to avoid mismatches.
 
 ---
@@ -95,7 +97,15 @@ Compact JSON for agents (fewer fields; see [agent-interop.md](agent-interop.md) 
 curl -s "http://127.0.0.1:18787/api/search?q=Introduction&format=json&detail=summary"
 ```
 
-Async ingest job:
+Synchronous ingest (returns result immediately, 30-minute timeout):
+
+```bash
+curl -s -X POST http://127.0.0.1:18787/api/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"path":"tests/fixtures/sample.md"}'
+```
+
+Async ingest job (returns job ID; poll for completion):
 
 ```bash
 curl -s -X POST http://127.0.0.1:18787/api/ingest/jobs \
@@ -105,7 +115,9 @@ curl -s -X POST http://127.0.0.1:18787/api/ingest/jobs \
 # Then: curl -s http://127.0.0.1:18787/api/jobs/<job_id>
 ```
 
-If you did not start the `app` profile, this will fail until you run the API on the host (see below).
+Both ingest endpoints accept an optional `"project_id": <integer>` field in the request body to associate the ingest with a project.
+
+If you did not start the `app` profile, these will fail until you run the API on the host (see below).
 
 ---
 
@@ -151,13 +163,44 @@ export GOPEDIA_API_URL=http://127.0.0.1:18787   # default; optional
 ```bash
 ./gopedia ingest tests/fixtures/sample.md
 ./gopedia ingest doc/design/Rev2/references
+./gopedia ingest tests/fixtures/sample.md --json   # print full JSON response
 ```
 
 **Search** (Xylem):
 
 ```bash
 ./gopedia search Introduction
+./gopedia search Introduction --json                        # full JSON response
+./gopedia search Introduction --json --detail=summary      # compact fields only
+./gopedia search Introduction --json --detail=standard     # standard fields
+./gopedia search Introduction --json --fields=title,snippet,l3_id  # explicit fields
 ```
+
+`--detail` and `--fields` require `--json`. `--fields` overrides `--detail` when both are given.
+
+**Search detail presets** (`?detail=` / `--detail`):
+
+| Preset | Fields returned |
+|--------|----------------|
+| `full` (default) | all fields including `surrounding_context` |
+| `standard` | `doc_id`, `project_id`, `l1_id`, `l2_id`, `l3_id`, `score`, `title`, `section_heading`, `snippet`, `source_path`, `breadcrumb` |
+| `summary` | `doc_id`, `l3_id`, `score`, `title`, `snippet`, `source_path` |
+
+**Filter by project** (HTTP API):
+
+```bash
+curl -s "http://127.0.0.1:18787/api/search?q=Introduction&project_id=123&format=json"
+```
+
+**Run local API server:**
+
+```bash
+./gopedia server                         # listens on 127.0.0.1:8787 by default
+./gopedia server --addr 0.0.0.0:18787   # match compose port
+./gopedia service start                  # alias for `gopedia server`
+```
+
+> The default host port for `gopedia server` is **8787**, not 18787. 18787 is the port published by Compose. Set `GOPEDIA_HTTP_ADDR` or `--addr` to override.
 
 ---
 
@@ -182,11 +225,33 @@ Ensure Python and `requirements.txt` are available on the host (`internal/runner
 Examples (after `export DOCKER_NETWORK_EXTERNAL=gopedia-dev` and with `.env` present):
 
 ```bash
-./scripts/run_ingestion_docker.sh tests/fixtures/sample.md Introduction
+# Full ingest + Xylem E2E (resets DBs, runs DBInitializer, ingests, verifies search)
 ./scripts/run_fresh_ingestion_docker.sh tests/fixtures/sample.md Introduction
+
+# Project-only ingest (no DB reset, no DBInitializer)
+./scripts/run_project_ingestion_docker.sh tests/fixtures/sample.md Introduction
+
+# Xylem verification only (assumes data already in DBs)
+./scripts/run_verify_xylem_docker.sh
+
+# Reset all Rhizome stores (PostgreSQL, Qdrant, TypeDB)
+python scripts/reset_rhizome_docker.py
 ```
 
-These build additional images (`Dockerfile.ingestion`, Phloem image) and reset or verify stores; read each script header for behavior.
+> `scripts/run_ingestion_docker.sh` hardcodes the Docker network to `neunexus` and does not use `DOCKER_NETWORK_EXTERNAL`. Prefer `run_fresh_ingestion_docker.sh` for the `gopedia-dev` stack.
+
+These scripts build additional images (`Dockerfile.ingestion`, Phloem image) and reset or verify stores; read each script header for behavior.
+
+**Other utility scripts:**
+
+| Script | Purpose |
+|--------|---------|
+| `verify_qdrant_payload.py` | Validate Qdrant point payloads post-ingest |
+| `verify_typedb_graph.py` | Validate TypeDB graph structure |
+| `verify_transpiration.py` | Verify Transpiration pipeline output |
+| `verify_projects_after_ingest.py` | Check project associations after ingest |
+| `print_postgres_counts.py` | Print row counts for all Postgres tables |
+| `sync_doc_to_typedb.py` | Sync documents to TypeDB manually |
 
 ---
 
@@ -213,7 +278,8 @@ docker compose -f docker-compose.dev.yml --env-file .env down -v
 | `docker compose` not found | Install Compose v2 plugin or `docker-compose` standalone ([install.md](install.md)). |
 | Pull / auth errors on macOS | `credsStore` / missing `docker-credential-desktop` ([install.md](install.md)). |
 | API 502 / ingest errors | `OPENAI_API_KEY`, DB connectivity, and `DBInitializer` completed successfully. |
-| Wrong network in scripts | `DOCKER_NETWORK_EXTERNAL=gopedia-dev` matches [`docker-compose.dev.yml`](../../docker-compose.dev.yml) `networks.gopedia-dev.name`. |
+| Wrong network in scripts | `DOCKER_NETWORK_EXTERNAL=gopedia-dev` matches [`docker-compose.dev.yml`](../../docker-compose.dev.yml) `networks.gopedia-dev.name`. `run_ingestion_docker.sh` ignores this — use `run_fresh_ingestion_docker.sh` instead. |
 | Port already allocated | Change `*_PUBLISH_*` variables in `.env`. |
+| `gopedia server` on wrong port | Default is 8787, not 18787. Set `--addr` or `GOPEDIA_HTTP_ADDR`. |
 
 For more context, see [overview.md](overview.md) and the Korean companion [../docker/local-dev-docker.md](../docker/local-dev-docker.md).

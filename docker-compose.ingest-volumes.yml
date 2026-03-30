@@ -1,0 +1,7 @@
+# Optional: mount host repos for `gopedia ingest` when API runs in Docker.
+# Usage (from gopedia repo root):
+#   docker compose -f docker-compose.dev.yml -f docker-compose.ingest-volumes.yml --env-file .env --profile app up -d gopedia
+services:
+  gopedia:
+    volumes:
+      - /Users/dong-hoshin/Documents/dev/geneso/universitas:/universitas:ro
