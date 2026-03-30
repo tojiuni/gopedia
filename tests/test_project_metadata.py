@@ -18,7 +18,6 @@ def test_pipeline_version_name_from_env(monkeypatch) -> None:
 def test_build_register_project_metadata(monkeypatch) -> None:
     monkeypatch.setenv("QDRANT_COLLECTION", "my_coll")
     monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "m1")
-    monkeypatch.setenv("GOPEDIA_RERANK", "0")
     m = build_register_project_metadata()
     assert m["QDRANT_COLLECTION"] == "my_coll"
     assert m["OPENAI_EMBEDDING_MODEL"] == "m1"

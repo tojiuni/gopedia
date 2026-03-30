@@ -6,10 +6,6 @@ WORKDIR /app
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-# Cross-Encoder reranking for Xylem (optional at runtime via GOPEDIA_RERANK).
-# CPU wheels only — avoids multi‑GB CUDA stacks in the slim image.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir 'sentence-transformers>=3.0.0'
 # Match gencode 7.x; grpcio-tools may pull protobuf 6.x so upgrade after
 RUN pip install --no-cache-dir --upgrade 'protobuf>=4.25'
 

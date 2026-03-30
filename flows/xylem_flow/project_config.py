@@ -46,7 +46,6 @@ class ResolvedRetrievalSettings:
     collection: str
     vector_name: Optional[str]
     embedding_model: str
-    rerank: bool
 
 
 def _meta_str(meta: Mapping[str, str], key: str) -> Optional[str]:
@@ -65,7 +64,6 @@ def resolve_retrieval_settings(
     collection: Optional[str] = None,
     vector_name: Optional[str] = None,
     embedding_model: Optional[str] = None,
-    rerank: Optional[bool] = None,
 ) -> ResolvedRetrievalSettings:
     """
     Priority: explicit keyword args (non-None) > project source_metadata > env defaults.
@@ -114,20 +112,10 @@ def resolve_retrieval_settings(
             return v
         return env.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
-    def pick_rerank() -> bool:
-        if rerank is not None:
-            return rerank
-        v = _meta_str(meta, "GOPEDIA_RERANK")
-        if v is not None:
-            return v.lower() in ("1", "true", "yes", "on")
-        x = env.get("GOPEDIA_RERANK", "0").strip().lower()
-        return x in ("1", "true", "yes", "on")
-
     return ResolvedRetrievalSettings(
         qdrant_host=pick_host(),
         qdrant_port=pick_port(),
         collection=pick_collection(),
         vector_name=pick_vector_name(),
         embedding_model=pick_embedding_model(),
-        rerank=pick_rerank(),
     )

@@ -20,7 +20,6 @@ def test_resolve_explicit_over_meta_over_env() -> None:
         "OPENAI_EMBEDDING_MODEL": "env-model",
         "QDRANT_HOST": "env-host",
         "QDRANT_PORT": "6333",
-        "GOPEDIA_RERANK": "0",
     }
     r = resolve_retrieval_settings(meta=meta, env=env, collection="explicit")
     assert r.collection == "explicit"
@@ -30,18 +29,6 @@ def test_resolve_explicit_over_meta_over_env() -> None:
     r3 = resolve_retrieval_settings(meta={}, env=env)
     assert r3.collection == "from_env"
     assert r3.embedding_model == "env-model"
-
-
-def test_resolve_rerank_from_meta() -> None:
-    env = {
-        "QDRANT_HOST": "localhost",
-        "QDRANT_PORT": "6333",
-        "QDRANT_COLLECTION": "c",
-        "GOPEDIA_RERANK": "0",
-    }
-    r = resolve_retrieval_settings(meta={"GOPEDIA_RERANK": "true"}, env=env)
-    assert r.rerank is True
-
 
 def test_resolve_embedding_model_explicit() -> None:
     env = {

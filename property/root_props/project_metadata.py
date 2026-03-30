@@ -37,5 +37,4 @@ def build_register_project_metadata() -> dict[str, str]:
     )
     _set_if_present(m, "GOPEDIA_IDENTITY_WORKER_ID", wid)
     m["pipeline_version_name"] = pipeline_version_name_from_env()
-    _set_if_present(m, "GOPEDIA_RERANK", os.environ.get("GOPEDIA_RERANK"))
     return m

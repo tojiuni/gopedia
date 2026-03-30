@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 CONTEXT_FOR_L3_SQL = """
 SELECT
@@ -34,13 +34,6 @@ WHERE l3.l2_id = %s::uuid
   AND l3.sort_order BETWEEN %s AND %s
 ORDER BY l3.sort_order ASC
 """
-
-L3_TEXT_BY_IDS_SQL = """
-SELECT id::text, content
-FROM knowledge_l3
-WHERE id = ANY(%s::uuid[])
-"""
-
 
 def embed_query_openai(query: str, model: Optional[str] = None) -> List[float]:
     from openai import OpenAI
@@ -124,25 +117,6 @@ def _toc_to_str(toc: Any) -> str:
         except TypeError:
             return str(toc)
     return str(toc)
-
-
-def fetch_l3_texts_by_ids(conn: Any, l3_ids: List[str]) -> Dict[str, str]:
-    if not l3_ids:
-        return {}
-    from uuid import UUID
-
-    uuids = []
-    for x in l3_ids:
-        try:
-            uuids.append(UUID(str(x)))
-        except ValueError:
-            continue
-    if not uuids:
-        return {}
-    with conn.cursor() as cur:
-        cur.execute(L3_TEXT_BY_IDS_SQL, (uuids,))
-        rows = cur.fetchall()
-    return {str(r[0]): (r[1] or "") for r in rows}
 
 
 def fetch_rich_context(
@@ -262,36 +236,6 @@ def fetch_rich_context(
     return ctx
 
 
-def _rerank_hits(
-    query: str,
-    conn: Any,
-    hits_with_ids: List[Tuple[Any, str]],
-    final_limit: int,
-    cross_encoder_model: Optional[str],
-) -> List[Tuple[Any, str]]:
-    if len(hits_with_ids) <= final_limit:
-        return hits_with_ids
-    ids = [x[1] for x in hits_with_ids]
-    texts = fetch_l3_texts_by_ids(conn, ids)
-    model_name = cross_encoder_model or os.environ.get(
-        "GOPEDIA_CROSS_ENCODER_MODEL",
-        "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    )
-    pairs: List[List[str]] = []
-    for _h, lid in hits_with_ids:
-        t = (texts.get(lid) or "").strip() or lid
-        pairs.append([query, t])
-    try:
-        from sentence_transformers import CrossEncoder
-
-        ce = CrossEncoder(model_name)
-        scores = ce.predict(pairs)
-        order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
-        return [hits_with_ids[i] for i in order[:final_limit]]
-    except Exception:
-        return hits_with_ids[:final_limit]
-
-
 def retrieve_and_enrich(
     query: str,
     conn: Any,
@@ -304,8 +248,6 @@ def retrieve_and_enrich(
     neighbor_window: int = 2000,
     context_level: int = 1,
     max_tokens: Optional[int] = None,
-    rerank: Optional[bool] = None,
-    cross_encoder_model: Optional[str] = None,
     limit: Optional[int] = None,
     project_id: Optional[int] = None,
     embedding_model: Optional[str] = None,
@@ -330,10 +272,8 @@ def retrieve_and_enrich(
         collection=collection,
         vector_name=vector_name,
         embedding_model=embedding_model,
-        rerank=rerank,
     )
 
-    use_rerank = resolved.rerank
     vec = embed_query_openai(query, model=resolved.embedding_model)
     hits = qdrant_search_l3_points(
         vec,
@@ -352,10 +292,7 @@ def retrieve_and_enrich(
             continue
         rows.append((h, str(lid)))
 
-    if use_rerank and len(rows) > final_limit:
-        rows = _rerank_hits(query, conn, rows, final_limit, cross_encoder_model)
-    else:
-        rows = rows[:final_limit]
+    rows = rows[:final_limit]
 
     out: List[dict] = []
     for h, lid in rows:
