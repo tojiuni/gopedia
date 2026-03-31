@@ -235,3 +235,125 @@ def restore_markdown_for_l1(conn: Any, l1_id: str) -> str:
     Flatten L2/L3 under knowledge_l1.id = l1_id into one string (format-aware via source_type).
     """
     return restore_content_for_l1(conn, l1_id).get("content") or ""
+
+
+def restore_code_for_l2(conn, l2_id: str) -> str:
+    """
+    Reconstruct original source code for an L2 section (function/class) by
+    ordering all L3 lines by sort_order.
+
+    Blank lines (content='') are included to guarantee 100% source fidelity.
+    Sort order is based on LineNum * 1000 (set during ingestion).
+
+    Args:
+        conn: psycopg connection
+        l2_id: UUID of the knowledge_l2 row
+
+    Returns:
+        Reconstructed source code as a string.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT content
+            FROM knowledge_l3
+            WHERE l2_id = %s
+            ORDER BY sort_order ASC
+            """,
+            (l2_id,),
+        )
+        rows = cur.fetchall()
+    return "\n".join(row[0] for row in rows)
+
+
+def fetch_code_snippet(conn, l3_id: str, max_lines: int = 10) -> str:
+    """
+    Return a readable code snippet for a search hit L3 row.
+
+    Strategy:
+    1. Walk parent_id chain upward to find the nearest ancestor where
+       source_metadata->>'is_anchor' = 'true' and parent_id IS NULL
+       (i.e. the top-level function/class anchor).
+    2. Collect all sibling L3 rows under that anchor (same l2_id,
+       sharing the anchor as ultimate root) ordered by sort_order.
+    3. Return up to max_lines lines joined by newline.
+
+    Falls back to just the hit line's content if traversal fails.
+    """
+    try:
+        with conn.cursor() as cur:
+            # Step 1: fetch the hit row
+            cur.execute(
+                """
+                SELECT content, l2_id, parent_id,
+                       source_metadata->>'is_anchor' AS is_anchor
+                FROM knowledge_l3
+                WHERE id = %s
+                """,
+                (l3_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return ""
+
+            content, l2_id, parent_id, is_anchor = row
+
+            # Step 2: find the top anchor in the l2
+            # Walk up parent_id chain to find a row with is_anchor=true and parent_id IS NULL
+            anchor_id = None
+            cur.execute(
+                """
+                WITH RECURSIVE chain AS (
+                    SELECT id, parent_id,
+                           source_metadata->>'is_anchor' AS is_anchor
+                    FROM knowledge_l3
+                    WHERE id = %s
+                    UNION ALL
+                    SELECT p.id, p.parent_id,
+                           p.source_metadata->>'is_anchor' AS is_anchor
+                    FROM knowledge_l3 p
+                    JOIN chain c ON c.parent_id = p.id
+                )
+                SELECT id FROM chain
+                WHERE is_anchor = 'true' AND parent_id IS NULL
+                LIMIT 1
+                """,
+                (l3_id,),
+            )
+            anchor_row = cur.fetchone()
+            if anchor_row:
+                anchor_id = anchor_row[0]
+
+            # Step 3: get lines under the anchor (or the whole l2 if no anchor found)
+            if anchor_id:
+                cur.execute(
+                    """
+                    WITH RECURSIVE subtree AS (
+                        SELECT id, content, sort_order, parent_id
+                        FROM knowledge_l3
+                        WHERE id = %s
+                        UNION ALL
+                        SELECT c.id, c.content, c.sort_order, c.parent_id
+                        FROM knowledge_l3 c
+                        JOIN subtree p ON c.parent_id = p.id
+                    )
+                    SELECT content FROM subtree
+                    ORDER BY sort_order ASC
+                    LIMIT %s
+                    """,
+                    (anchor_id, max_lines),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT content FROM knowledge_l3
+                    WHERE l2_id = %s
+                    ORDER BY sort_order ASC
+                    LIMIT %s
+                    """,
+                    (l2_id, max_lines),
+                )
+            lines = [r[0] for r in cur.fetchall()]
+            return "\n".join(lines)
+    except Exception:
+        return content if "content" in dir() else ""
