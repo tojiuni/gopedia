@@ -24,6 +24,7 @@ from property.root_props.markdown_loader import (
     register_project,
 )
 from property.root_props.project_metadata import build_register_project_metadata
+from property.root_props.run_code import _CODE_EXTENSIONS, ingest_code_file
 try:
     from core.ontology_so import sync_document_to_typedb
 except ImportError:
@@ -56,30 +57,42 @@ def main() -> None:
         project_mid_str = str(project_machine_id) if project_machine_id else ""
 
         for md_path in collect_markdown_paths(path):
-            content, title, source_metadata = load_markdown(md_path)
-            meta = dict(source_metadata)
-            if project_id_str:
-                meta["project_id"] = project_id_str
-            if project_mid_str:
-                meta["project_machine_id"] = project_mid_str
-            ok, doc_id, machine_id = call_phloem_ingest(
-                channel, title, content, meta
-            )
-            if ok:
-                print(f"OK {md_path} -> doc_id={doc_id} machine_id={machine_id}")
-                if sync_document_to_typedb is not None and os.environ.get("TYPEDB_HOST"):
-                    try:
-                        sync_document_to_typedb(
-                            doc_id, int(machine_id), title, content
-                        )
-                    except Exception as e:
-                        print(
-                            f"TypeDB sync failed (doc_id={doc_id}): {e}",
-                            file=sys.stderr,
-                        )
+            if md_path.suffix.lower() in _CODE_EXTENSIONS:
+                print(f"[code] {md_path}")
+                ok, doc_id, machine_id = ingest_code_file(
+                    channel, md_path, project_id_str, project_mid_str
+                )
+                if ok:
+                    print(f"OK {md_path} -> doc_id={doc_id} machine_id={machine_id}")
+                else:
+                    print(f"FAIL {md_path} doc_id={doc_id} machine_id={machine_id}", file=sys.stderr)
+                    sys.exit(2)
             else:
-                print(f"FAIL {md_path} doc_id={doc_id} machine_id={machine_id}", file=sys.stderr)
-                sys.exit(2)
+                print(f"[md] {md_path}")
+                content, title, source_metadata = load_markdown(md_path)
+                meta = dict(source_metadata)
+                if project_id_str:
+                    meta["project_id"] = project_id_str
+                if project_mid_str:
+                    meta["project_machine_id"] = project_mid_str
+                ok, doc_id, machine_id = call_phloem_ingest(
+                    channel, title, content, meta
+                )
+                if ok:
+                    print(f"OK {md_path} -> doc_id={doc_id} machine_id={machine_id}")
+                    if sync_document_to_typedb is not None and os.environ.get("TYPEDB_HOST"):
+                        try:
+                            sync_document_to_typedb(
+                                doc_id, int(machine_id), title, content
+                            )
+                        except Exception as e:
+                            print(
+                                f"TypeDB sync failed (doc_id={doc_id}): {e}",
+                                file=sys.stderr,
+                            )
+                else:
+                    print(f"FAIL {md_path} doc_id={doc_id} machine_id={machine_id}", file=sys.stderr)
+                    sys.exit(2)
 
 
 if __name__ == "__main__":
