@@ -65,9 +65,22 @@ If pulls failed with a desktop credential helper, export `DOCKER_HOST` and a min
 | Phloem gRPC | 50051 |
 | PostgreSQL | 5432 |
 | Qdrant HTTP / gRPC | 6333 / 6334 |
+| Qdrant Web UI (nginx → Qdrant) | 6335 |
 | TypeDB | 1729 / 8000 |
 
-Override with `POSTGRES_PUBLISH_PORT`, `QDRANT_PUBLISH_HTTP`, `TYPEDB_PUBLISH_PORT`, `GOPEDIA_PUBLISH_HTTP`, etc. in `.env` if these conflict locally.
+Override with `POSTGRES_PUBLISH_PORT`, `QDRANT_PUBLISH_HTTP`, `QDRANT_UI_PUBLISH_PORT`, `TYPEDB_PUBLISH_PORT`, `GOPEDIA_PUBLISH_HTTP`, etc. in `.env` if these conflict locally.
+
+### Browser UIs (optional)
+
+**Qdrant** — after the DB stack is up, start the proxy service and open the dashboard:
+
+```bash
+docker compose -f docker-compose.dev.yml --env-file .env up -d qdrant-ui
+```
+
+If your CLI uses `docker-compose` (hyphen), use that instead of `docker compose`. Then open **http://localhost:6335/dashboard** (or the host port you set with `QDRANT_UI_PUBLISH_PORT`).
+
+**TypeDB Studio** — with TypeDB publishing **8000** to the host (default in [`docker-compose.dev.yml`](../../docker-compose.dev.yml)), open [TypeDB Studio](https://studio.typedb.com/data), set the server to **`localhost:8000`**, choose **TypeDB CE 3.8.2** (matching the image tag in compose), and connect.
 
 ---
 
