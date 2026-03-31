@@ -52,7 +52,10 @@ func NewDefaultSink(cfg SinkConfig) *DefaultSink {
 // Returns documents.id as a UUID string (canonical doc_id for IngestResponse and payloads).
 func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks []types.Chunk) (string, error) {
 	version := 1
-	sourceType := getEnv("GOPEDIA_SOURCE_TYPE", "md")
+	sourceType := msg.SourceMetadata["source_type"]
+	if sourceType == "" {
+		sourceType = getEnv("GOPEDIA_SOURCE_TYPE", "md")
+	}
 
 	allChunks := chunks
 	l2ChildHash := computeL2ChildHash(allChunks)
@@ -217,8 +220,8 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			if headingLine != "" {
 				hHex := contentHashHex(headingLine)
 				err = s.pg.QueryRow(ctx,
-					`INSERT INTO knowledge_l3 (l2_id, content, content_hash, version, version_id, sort_order, parent_id, created_at, modified_at)
-					 VALUES ($1, $2, $3, 1, $4, 0, NULL, now(), now())
+					`INSERT INTO knowledge_l3 (l2_id, content, content_hash, version, version_id, sort_order, parent_id, source_metadata, created_at, modified_at)
+					 VALUES ($1, $2, $3, 1, $4, 0, NULL, '{}'::jsonb, now(), now())
 					 RETURNING id`,
 					l2ID, headingLine, hHex, versionID,
 				).Scan(&titleL3ID)
@@ -239,6 +242,32 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			secType := c.SectionType
 			if secType == "" {
 				secType = types.SectionTypeHeading
+			}
+
+			// Code domain: use pre-computed L3Lines (1 line = 1 L3, tree-structured).
+			if len(c.L3Lines) > 0 {
+				all, codeAnchors, codeErr := insertCodeL3Lines(ctx, s.pg, l2ID, c.L3Lines, versionID)
+				if codeErr != nil {
+					return docUUIDStr, fmt.Errorf("postgres knowledge_l3 code %s: %w", c.SectionID, codeErr)
+				}
+				if len(all) > 0 {
+					l3h := computeL3ChildHash(all)
+					_, _ = s.pg.Exec(ctx, `UPDATE knowledge_l2 SET l3_child_hash = $1, modified_at = now() WHERE id = $2`, l3h, l2ID)
+				}
+				for _, ins := range codeAnchors {
+					l3Items = append(l3Items, l3ToEmbed{
+						l1ID:        headL1ID,
+						l3ID:        ins.l3ID,
+						l2ID:        l2ID,
+						sectionID:   c.SectionID,
+						sectionType: secType,
+						text:        ins.text,
+						versionID:   versionID,
+						sourceType:  sourceType,
+					})
+				}
+				changed = append(changed, c)
+				continue
 			}
 
 			var sentences []string
@@ -283,7 +312,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			}
 			forHash := make([]l3Insert, 0, len(inserted)+1)
 			if hasTitleL3 {
-				forHash = append(forHash, l3Insert{l3ID: titleL3ID, text: headingLine})
+				forHash = append(forHash, l3Insert{l3ID: titleL3ID, text: headingLine, sourceMetaJSON: nil})
 			}
 			forHash = append(forHash, inserted...)
 			if len(forHash) > 0 {
@@ -299,6 +328,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 					sectionType: secType,
 					text:        ins.text,
 					versionID:   versionID,
+					sourceType:  sourceType,
 				})
 			}
 			changed = append(changed, c)
@@ -378,7 +408,10 @@ func (s *DefaultSink) upsertPoint(ctx context.Context, collection, pointID strin
 func (s *DefaultSink) upsertL3Point(ctx context.Context, collection, pointID string, vector []float32, item l3ToEmbed, projectID int64) (string, error) {
 	qid := qdrantUUID(pointID)
 	keywordIDs := s.tuberKeywordIDs(ctx, item.text)
-	st := sourceTypeForPayload()
+	st := item.sourceType
+	if st == "" {
+		st = sourceTypeForPayload()
+	}
 	secType := item.sectionType
 	if secType == "" {
 		secType = types.SectionTypeHeading
@@ -434,6 +467,7 @@ type l3ToEmbed struct {
 	sectionType string
 	text        string
 	versionID   int64
+	sourceType  string
 }
 
 func payloadMapToPayload(m map[string]interface{}) map[string]*qdrant.Value {
@@ -829,8 +863,75 @@ func tuberGetOrCreate(ctx context.Context, pg *pgxpool.Pool, rdb *redis.Client, 
 }
 
 type l3Insert struct {
-	l3ID uuid.UUID
-	text string
+	l3ID           uuid.UUID
+	text           string
+	sourceMetaJSON []byte // stored in knowledge_l3.source_metadata; nil -> '{}'
+}
+
+// insertCodeL3Lines inserts pre-computed CodeLine rows into knowledge_l3.
+// Each line gets its own source_metadata JSONB with tree-sitter node info.
+// parent_id is set from ParentIdx (chunk-relative index) to build the tree structure.
+// Returns (all inserted rows, anchor-only rows for Qdrant embedding).
+func insertCodeL3Lines(
+	ctx context.Context,
+	pg *pgxpool.Pool,
+	l2ID uuid.UUID,
+	lines []types.CodeLine,
+	versionID int64,
+) (all []l3Insert, anchors []l3Insert, err error) {
+	inserted := make([]uuid.UUID, len(lines))
+
+	for i, ln := range lines {
+		sortOrder := ln.LineNum * 1000 // preserve original line order
+
+		var parentArg interface{}
+		if ln.ParentIdx >= 0 && ln.ParentIdx < i {
+			pid := inserted[ln.ParentIdx]
+			if pid != uuid.Nil {
+				parentArg = pid
+			}
+		}
+
+		metaMap := map[string]any{
+			"node_type":      ln.NodeType,
+			"is_anchor":      ln.IsAnchor,
+			"is_block_start": ln.IsBlockStart,
+			"line_num":       ln.LineNum,
+		}
+		metaJSON, _ := json.Marshal(metaMap)
+
+		hHex := contentHashHex(fmt.Sprintf("%d|%s", ln.LineNum, ln.Content))
+
+		var l3ID uuid.UUID
+		insErr := pg.QueryRow(ctx,
+			`INSERT INTO knowledge_l3
+			   (l2_id, content, content_hash, version, version_id,
+			    sort_order, parent_id, source_metadata, created_at, modified_at)
+			 VALUES ($1, $2, $3, 1, $4, $5, $6, $7::jsonb, now(), now())
+			 ON CONFLICT DO NOTHING
+			 RETURNING id`,
+			l2ID, ln.Content, hHex, versionID, sortOrder, parentArg, metaJSON,
+		).Scan(&l3ID)
+
+		if insErr != nil {
+			// Row may already exist (idempotent re-ingest): look up existing id.
+			lookupErr := pg.QueryRow(ctx,
+				`SELECT id FROM knowledge_l3 WHERE l2_id = $1 AND content_hash = $2 LIMIT 1`,
+				l2ID, hHex,
+			).Scan(&l3ID)
+			if lookupErr != nil {
+				return nil, nil, fmt.Errorf("insertCodeL3Lines row %d: %w", ln.LineNum, lookupErr)
+			}
+		}
+
+		inserted[i] = l3ID
+		row := l3Insert{l3ID: l3ID, text: ln.Content, sourceMetaJSON: metaJSON}
+		all = append(all, row)
+		if ln.IsAnchor && strings.TrimSpace(ln.Content) != "" {
+			anchors = append(anchors, row)
+		}
+	}
+	return all, anchors, nil
 }
 
 // insertL3Sentences stores sentence-level L3 rows. If chainAfter is non-nil, the first sentence's parent_id
@@ -865,15 +966,15 @@ func insertL3Sentences(ctx context.Context, pg *pgxpool.Pool, l2ID uuid.UUID, se
 			parentArg = *prev
 		}
 		insErr := pg.QueryRow(ctx,
-			`INSERT INTO knowledge_l3 (l2_id, content, content_hash, version, version_id, sort_order, parent_id, created_at, modified_at)
-			 VALUES ($1, $2, $3, 1, $4, $5, $6, now(), now())
+			`INSERT INTO knowledge_l3 (l2_id, content, content_hash, version, version_id, sort_order, parent_id, source_metadata, created_at, modified_at)
+			 VALUES ($1, $2, $3, 1, $4, $5, $6, '{}'::jsonb, now(), now())
 			 RETURNING id`,
 			l2ID, sent, hHex, versionID, sortOrder, parentArg,
 		).Scan(&l3ID)
 		if insErr != nil {
 			return nil, insErr
 		}
-		out = append(out, l3Insert{l3ID: l3ID, text: sent})
+		out = append(out, l3Insert{l3ID: l3ID, text: sent, sourceMetaJSON: nil})
 		pid := l3ID
 		prev = &pid
 	}

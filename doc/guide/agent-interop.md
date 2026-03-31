@@ -86,3 +86,69 @@ Pass `X-Request-ID` to correlate logs; the response echoes `request_id` when gen
 - Existing clients that expect non-200 on failure should be updated: ingest/search failures may return **200** with `ok: false` / `failure` populated.
 
 See also [run.md](run.md) for stack bring-up.
+
+---
+
+## Code domain — ingest and search for source files
+
+Gopedia Phase 1 adds a **code domain** pipeline. Source files (`.py`, `.go`, `.ts`, …) are ingested as `source_type=code` and each source line becomes one L3 row with structural metadata.
+
+### Ingesting code files
+
+```bash
+# Via gRPC CLI (sets domain=code, source_type=code automatically)
+GOPEDIA_PHLOEM_GRPC_ADDR=localhost:50051 \
+python -m property.root_props.run_code path/to/file.py
+
+# Via HTTP API (language inferred from extension)
+curl -s -X POST http://127.0.0.1:18787/api/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"path":"internal/phloem/chunker/code.go"}'
+```
+
+### Recognising code hits in search results
+
+Code hits return `source_type: "code"` in the Qdrant payload. Use the `title` field (absolute file path) and `snippet` (matched anchor line — function/class definition) to identify them:
+
+```json
+{
+  "title":              "/app/internal/phloem/chunker/code.go",
+  "snippet":            "type CodeChunker struct {",
+  "score":              0.745,
+  "surrounding_context":"type CodeChunker struct {\n\tParser *toc.CodeTOCParser\n}"
+}
+```
+
+Only anchor lines (function/class definitions) are embedded in Qdrant. `surrounding_context` contains neighboring lines from the same L2 chunk.
+
+### Recommended call pattern for agents reading code
+
+```bash
+# 1. Find the function — summary detail is cheapest
+curl -s "http://127.0.0.1:18787/api/search?q=<query>&format=json&detail=standard&fields=title,snippet,l2_id,l3_id,score"
+
+# 2. Read full context from the hit (surrounding_context already in full detail)
+curl -s "http://127.0.0.1:18787/api/search?q=<query>&format=json"
+```
+
+To reconstruct the full original file or a single function from PostgreSQL (no re-embedding needed), use the Python restore helpers — see [code-domain.md](code-domain.md#restoring-code-from-postgresql).
+
+### `source_metadata` on L3 rows (Postgres)
+
+Each `knowledge_l3` row for code files carries:
+
+```json
+{ "line_num": 26, "node_type": "function_definition", "is_anchor": true, "is_block_start": true }
+```
+
+Agents can query anchors directly:
+
+```sql
+SELECT content, source_metadata->>'line_num' AS line
+FROM knowledge_l3
+WHERE l2_id = '<l2_uuid>'
+  AND (source_metadata->>'is_anchor')::bool = true
+ORDER BY sort_order;
+```
+
+For full documentation on the code domain (architecture, quality testing with Gardener, restore API, SQL queries): [code-domain.md](code-domain.md).

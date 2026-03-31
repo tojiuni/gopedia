@@ -296,6 +296,21 @@ func startPhloemGRPC(grpcAddr string) {
 		defaultSink,
 		idGen,
 	))
+	// Code domain pipeline (Python/Go via tree-sitter).
+	repoRoot := getEnv("GOPEDIA_REPO_ROOT", ".")
+	pythonBin := getEnv("GOPEDIA_PYTHON", "python3")
+	codeParser := &toc.CodeTOCParser{
+		Lang:      "python",
+		RepoRoot:  repoRoot,
+		PythonBin: pythonBin,
+	}
+	phloem.Register(domain.Code, domain.NewCodePipeline(
+		codeParser,
+		&chunker.CodeChunker{Parser: codeParser},
+		defaultSink,
+		idGen,
+	))
+	slog.Info("code pipeline registered", "repo_root", repoRoot, "python", pythonBin)
 	server := phloem.NewServer(pgPool)
 
 	lis, err := net.Listen("tcp", grpcAddr)

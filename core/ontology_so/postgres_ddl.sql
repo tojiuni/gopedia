@@ -139,3 +139,14 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_l2_title_id ON knowledge_l2 (title_id) 
 
 COMMENT ON COLUMN knowledge_l2.source_metadata IS
 'JSON: block_type (ordered|table|code|image|heading), table headers/align/column_count, code language, image alt/url, parent_section_id echo.';
+
+-- Phase 1: Code domain — store tree-sitter node metadata per L3 line.
+ALTER TABLE knowledge_l3
+  ADD COLUMN IF NOT EXISTS source_metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_l3_source_metadata
+  ON knowledge_l3 USING gin (source_metadata);
+
+COMMENT ON COLUMN knowledge_l3.source_metadata IS
+'code domain: {"node_type":"function_definition","is_anchor":true,"is_block_start":false,"line_num":26}
+ markdown domain: {} (empty object, backward-compatible default)';
