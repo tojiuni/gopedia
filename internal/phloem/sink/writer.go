@@ -70,6 +70,28 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			return "", fmt.Errorf("postgres pipeline_version: %w", err)
 		}
 
+		// IMP-01: title-based duplicate prevention — check before machine_id lookup.
+		var titleDocID uuid.UUID
+		var titleL2Hash []byte
+		titleErr := s.pg.QueryRow(ctx,
+			`SELECT k.document_id, k.l2_child_hash
+			   FROM knowledge_l1 k
+			  WHERE k.title = $1 AND k.source_type = $2
+			  ORDER BY k.created_at DESC
+			  LIMIT 1`,
+			msg.Title, sourceType,
+		).Scan(&titleDocID, &titleL2Hash)
+		if titleErr == nil && string(titleL2Hash) == string(l2ChildHash) {
+			// Same title and same content hash — return the existing document UUID.
+			var existingUUIDByTitle uuid.UUID
+			if lookupErr := s.pg.QueryRow(ctx,
+				`SELECT id FROM documents WHERE id = $1`, titleDocID,
+			).Scan(&existingUUIDByTitle); lookupErr == nil {
+				return existingUUIDByTitle.String(), nil
+			}
+		}
+		// titleErr == nil but hash differs → fall through to normal upsert (version bump).
+
 		var existingDocID uuid.UUID
 		qerr := s.pg.QueryRow(ctx, `SELECT id FROM documents WHERE machine_id = $1`, msg.MachineId).Scan(&existingDocID)
 		if qerr == nil {
@@ -111,19 +133,22 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 
 		metaJSON, _ := json.Marshal(msg.SourceMetadata)
 		projectID := ingestProjectIDPtrFromMetadata(msg.SourceMetadata)
+		// IMP-07: capture the gopedia version that performed this ingest.
+		ingestVersion := getEnv("GOPEDIA_VERSION", "dev")
 		var docUUID uuid.UUID
 		err = s.pg.QueryRow(ctx,
-			`INSERT INTO documents (machine_id, title, source_metadata, version, version_id, created_at, project_id, source_type)
-			 VALUES ($1, $2, $3, $4, $5, now(), $6, $7)
+			`INSERT INTO documents (machine_id, title, source_metadata, version, version_id, created_at, project_id, source_type, ingest_version)
+			 VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8)
 			 ON CONFLICT (machine_id) DO UPDATE SET
 			   title = EXCLUDED.title,
 			   source_metadata = EXCLUDED.source_metadata,
 			   version = documents.version + 1,
 			   version_id = EXCLUDED.version_id,
 			   project_id = COALESCE(EXCLUDED.project_id, documents.project_id),
-			   source_type = EXCLUDED.source_type
+			   source_type = EXCLUDED.source_type,
+			   ingest_version = EXCLUDED.ingest_version
 			 RETURNING id`,
-			msg.MachineId, msg.Title, metaJSON, version, versionID, projectID, sourceType,
+			msg.MachineId, msg.Title, metaJSON, version, versionID, projectID, sourceType, ingestVersion,
 		).Scan(&docUUID)
 		if err != nil {
 			return "", fmt.Errorf("postgres documents: %w", err)
