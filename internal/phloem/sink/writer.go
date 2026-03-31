@@ -52,7 +52,10 @@ func NewDefaultSink(cfg SinkConfig) *DefaultSink {
 // Returns documents.id as a UUID string (canonical doc_id for IngestResponse and payloads).
 func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks []types.Chunk) (string, error) {
 	version := 1
-	sourceType := getEnv("GOPEDIA_SOURCE_TYPE", "md")
+	sourceType := msg.SourceMetadata["source_type"]
+	if sourceType == "" {
+		sourceType = getEnv("GOPEDIA_SOURCE_TYPE", "md")
+	}
 
 	allChunks := chunks
 	l2ChildHash := computeL2ChildHash(allChunks)
@@ -260,6 +263,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 						sectionType: secType,
 						text:        ins.text,
 						versionID:   versionID,
+						sourceType:  sourceType,
 					})
 				}
 				changed = append(changed, c)
@@ -324,6 +328,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 					sectionType: secType,
 					text:        ins.text,
 					versionID:   versionID,
+					sourceType:  sourceType,
 				})
 			}
 			changed = append(changed, c)
@@ -403,7 +408,10 @@ func (s *DefaultSink) upsertPoint(ctx context.Context, collection, pointID strin
 func (s *DefaultSink) upsertL3Point(ctx context.Context, collection, pointID string, vector []float32, item l3ToEmbed, projectID int64) (string, error) {
 	qid := qdrantUUID(pointID)
 	keywordIDs := s.tuberKeywordIDs(ctx, item.text)
-	st := sourceTypeForPayload()
+	st := item.sourceType
+	if st == "" {
+		st = sourceTypeForPayload()
+	}
 	secType := item.sectionType
 	if secType == "" {
 		secType = types.SectionTypeHeading
@@ -459,6 +467,7 @@ type l3ToEmbed struct {
 	sectionType string
 	text        string
 	versionID   int64
+	sourceType  string
 }
 
 func payloadMapToPayload(m map[string]interface{}) map[string]*qdrant.Value {
