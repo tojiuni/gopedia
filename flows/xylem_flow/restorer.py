@@ -5,6 +5,14 @@ from __future__ import annotations
 import json
 from typing import Any, List, Sequence, Tuple
 
+RESTORE_CODE_L3_SQL = """
+SELECT l3.content
+FROM knowledge_l3 l3
+JOIN knowledge_l2 l2 ON l3.l2_id = l2.id
+WHERE l2.l1_id = %s::uuid
+ORDER BY l3.sort_order ASC
+"""
+
 # Per L2 block: sort_order groups; within L2, L3 ordered by sort_order.
 RESTORE_L2_L3_SQL = """
 SELECT l2.sort_order,
@@ -151,8 +159,13 @@ def restore_content_for_l1(conn: Any, l1_id: str) -> dict[str, Any]:
                 "l1_summary": "",
             }
         title, source_type, smeta_raw, toc_raw, summary_blob = meta
-        cur.execute(RESTORE_L2_L3_SQL, (l1_id,))
-        rows = cur.fetchall()
+        st_early = (source_type or "md").lower()
+        if st_early == "code":
+            cur.execute(RESTORE_CODE_L3_SQL, (l1_id,))
+            code_rows = cur.fetchall()
+        else:
+            cur.execute(RESTORE_L2_L3_SQL, (l1_id,))
+            rows = cur.fetchall()
 
     smeta: dict | Any
     if smeta_raw is None:
@@ -187,37 +200,41 @@ def restore_content_for_l1(conn: Any, l1_id: str) -> dict[str, Any]:
 
     st = (source_type or "md").lower()
 
-    blocks: list[str] = []
-    cur_key: tuple[Any, str] | None = None
-    cur_meta: dict[str, Any] = {}
-    cur_sid = ""
-    cur_items: List[Tuple[Any, str]] = []
-
-    def flush() -> None:
-        nonlocal cur_key, cur_meta, cur_sid, cur_items
-        if cur_key is None:
-            return
-        piece = _format_block(cur_sid, cur_meta, cur_items)
-        if piece.strip():
-            blocks.append(piece.strip())
-        cur_key = None
-        cur_meta = {}
+    if st == "code":
+        # Code files: join all L3 lines in sort_order without any markdown wrapping.
+        content = "\n".join(r[0] if r[0] is not None else "" for r in code_rows)
+    else:
+        blocks: list[str] = []
+        cur_key: tuple[Any, str] | None = None
+        cur_meta: dict[str, Any] = {}
         cur_sid = ""
-        cur_items = []
+        cur_items: List[Tuple[Any, str]] = []
 
-    for row in rows:
-        l2_sort, section_id, smeta_l2, l3_sort, content = row
-        key = (l2_sort, section_id)
-        if cur_key is None or key != cur_key:
-            flush()
-            cur_key = key
-            cur_sid = section_id or ""
-            cur_meta = _parse_l2_meta(smeta_l2)
-        if content is not None:
-            cur_items.append((l3_sort, str(content)))
-    flush()
+        def flush() -> None:
+            nonlocal cur_key, cur_meta, cur_sid, cur_items
+            if cur_key is None:
+                return
+            piece = _format_block(cur_sid, cur_meta, cur_items)
+            if piece.strip():
+                blocks.append(piece.strip())
+            cur_key = None
+            cur_meta = {}
+            cur_sid = ""
+            cur_items = []
 
-    content = "\n\n".join(blocks) if blocks else ""
+        for row in rows:
+            l2_sort, section_id, smeta_l2, l3_sort, content = row
+            key = (l2_sort, section_id)
+            if cur_key is None or key != cur_key:
+                flush()
+                cur_key = key
+                cur_sid = section_id or ""
+                cur_meta = _parse_l2_meta(smeta_l2)
+            if content is not None:
+                cur_items.append((l3_sort, str(content)))
+        flush()
+
+        content = "\n\n".join(blocks) if blocks else ""
 
     return {
         "l1_id": l1_id,
