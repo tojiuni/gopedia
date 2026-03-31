@@ -30,6 +30,18 @@ const (
 	LevelL3 = 3
 )
 
+// CodeLine represents one source code line as an L3 unit.
+// Produced by the tree-sitter parser (flows/code_parser) and consumed by DefaultSink.
+// When Chunk.L3Lines is non-nil, DefaultSink uses these directly instead of sentence splitting.
+type CodeLine struct {
+	LineNum      int    // 1-based source file line number (used as sort_order base)
+	Content      string // exact source line content; empty string for blank lines
+	NodeType     string // tree-sitter node type: "function_definition", "import_statement", etc.
+	IsAnchor     bool   // true = gets a Qdrant embedding vector + eligible as parent_id target
+	IsBlockStart bool   // true = head of a multi-line compound expression (e.g. "return foo(")
+	ParentIdx    int    // index into the containing Chunk.L3Lines slice; -1 = no parent within chunk
+}
+
 // Chunk is the unit for embedding and storage. L2 = one per section/header; L3 = atomic sentence/block.
 type Chunk struct {
 	SectionID       string // unique within doc (e.g. s0, s1, o1, t1)
@@ -47,4 +59,8 @@ type Chunk struct {
 	// SemanticL3Split: when true, DefaultSink splits each sentence further on commas, pipes, etc.
 	// so the first fragment is parent L3 and following fragments chain under it (same l2_id).
 	SemanticL3Split bool `json:"semantic_l3_split,omitempty"`
+	// L3Lines holds pre-computed per-line L3 data for the code domain.
+	// When non-nil, DefaultSink skips sentence splitting and inserts these lines directly.
+	// Always nil for Markdown chunks (backward-compatible).
+	L3Lines []CodeLine `json:"l3_lines,omitempty"`
 }
