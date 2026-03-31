@@ -9,8 +9,8 @@ This guide family focuses on the **local developer stack** defined in [`docker-c
 | Layer | Role |
 |-------|------|
 | **HTTP API** | Listens on port **18787** (configurable). Endpoints include `POST /api/ingest` and `GET /api/search`. |
-| **Phloem** | gRPC server inside the same API process (default **50051** in dev compose). Markdown ingest flows through Python `property.root_props.run` → Phloem → stores. |
-| **Xylem** | Invoked as a Python subprocess for `GET /api/search` (`flows.xylem_flow.cli`). |
+| **Phloem** | gRPC server inside the same API process (default **50051** in dev compose). Markdown ingest: `property.root_props.run` → `WikiPipeline`. Code ingest: `property.root_props.run_code` → `CodePipeline` (tree-sitter, 1 line = 1 L3). |
+| **Xylem** | Invoked as a Python subprocess for `GET /api/search` (`flows.xylem_flow.cli`). Returns hits from both markdown and code domains; code hits have `source_type=code`. |
 | **PostgreSQL** | Relational metadata and document tables (`postgres_db` service). |
 | **Qdrant** | Vector store for chunks and document embeddings (`qdrant` service). |
 | **TypeDB** | Graph / document-section model (`typedb` service). |
@@ -43,5 +43,6 @@ The [`Dockerfile`](../../Dockerfile) builds and runs the **`api`** binary only. 
 
 - [run.md](run.md) — step-by-step bring-up and smoke tests.
 - [install.md](install.md) — OS-specific Docker and toolchain setup.
-- [agent-interop.md](agent-interop.md) — JSON search (staged `detail` / sparse `fields`), ingest jobs, `/api/health/deps`, structured `failure` payloads.
+- [agent-interop.md](agent-interop.md) — JSON search (staged `detail` / sparse `fields`), ingest jobs, `/api/health/deps`, structured `failure` payloads, code domain search.
+- [code-domain.md](code-domain.md) — Code file ingest (`run_code.py`), L1/L2/L3 structure, `source_metadata` schema, restore API, Gardener quality test setup.
 - [../docker/local-dev-docker.md](../docker/local-dev-docker.md) — Korean notes on the same dev compose file (duplicate topics in English here).
