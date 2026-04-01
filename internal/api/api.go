@@ -350,6 +350,11 @@ func Run(addr string) error {
 	if err != nil {
 		return err
 	}
+	if err := py.ValidatePython(); err != nil {
+		slog.Warn("python environment check failed — ingest/search subprocesses may not work", "err", err)
+	} else {
+		slog.Info("python environment ok", "binary", py.Python)
+	}
 	// Fuego defaults Read/WriteTimeout to 30s; ingest/search subprocesses can run much longer.
 	const httpLongTimeout = 40 * time.Minute
 	s := fuego.NewServer(

@@ -25,11 +25,48 @@ func NewRunner() (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	py := os.Getenv("GOPEDIA_PYTHON")
-	if strings.TrimSpace(py) == "" {
-		py = "python3"
-	}
+	py := resolvePython(root)
 	return &Runner{RepoRoot: root, Python: py}, nil
+}
+
+// resolvePython returns the Python binary to use, in priority order:
+//  1. GOPEDIA_PYTHON env var (explicit override)
+//  2. <repo_root>/.venv/bin/python3 (local venv auto-detect)
+//  3. <repo_root>/.venv/bin/python  (local venv fallback name)
+//  4. "python3" (system fallback)
+func resolvePython(repoRoot string) string {
+	if v := strings.TrimSpace(os.Getenv("GOPEDIA_PYTHON")); v != "" {
+		return v
+	}
+	for _, rel := range []string{".venv/bin/python3", ".venv/bin/python"} {
+		candidate := filepath.Join(repoRoot, rel)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return "python3"
+}
+
+// ValidatePython checks that the configured Python binary exists and has grpc importable.
+// Returns a non-nil error with a human-readable message if the check fails.
+func (r *Runner) ValidatePython() error {
+	if _, err := exec.LookPath(r.Python); err != nil {
+		if !filepath.IsAbs(r.Python) {
+			return fmt.Errorf("python binary %q not found in PATH; set GOPEDIA_PYTHON to the venv python (e.g. .venv/bin/python3): %w", r.Python, err)
+		}
+		if _, statErr := os.Stat(r.Python); statErr != nil {
+			return fmt.Errorf("python binary %q does not exist; set GOPEDIA_PYTHON to the venv python (e.g. .venv/bin/python3): %w", r.Python, statErr)
+		}
+	}
+	cmd := exec.Command(r.Python, "-c", "import grpc")
+	cmd.Dir = r.RepoRoot
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf(
+			"python binary %q cannot import grpc (venv packages missing); set GOPEDIA_PYTHON to the venv python (e.g. .venv/bin/python3)\ndetail: %s",
+			r.Python, strings.TrimSpace(string(out)),
+		)
+	}
+	return nil
 }
 
 // ResolveRepoRoot returns GOPEDIA_REPO_ROOT or the directory containing go.mod walking upward from cwd.
