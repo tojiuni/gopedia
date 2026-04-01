@@ -63,8 +63,9 @@ def cmd_search(args: argparse.Namespace) -> int:
         print("empty query", file=sys.stderr)
         return 2
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("OPENAI_API_KEY required for semantic search", file=sys.stderr)
+    embedding_backend = os.environ.get("GOPEDIA_EMBEDDING_BACKEND", "openai").strip().lower()
+    if embedding_backend != "local" and not os.environ.get("OPENAI_API_KEY"):
+        print("OPENAI_API_KEY required for semantic search when backend is not local", file=sys.stderr)
         return 2
 
     try:
