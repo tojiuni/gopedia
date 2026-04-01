@@ -21,6 +21,7 @@ type APIError struct {
 type SearchHit struct {
 	DocID              string  `json:"doc_id"`
 	ProjectID          *int64  `json:"project_id,omitempty"`
+	DocName            string  `json:"doc_name,omitempty"`
 	L1ID               string  `json:"l1_id"`
 	L2ID               string  `json:"l2_id"`
 	L3ID               string  `json:"l3_id"`
@@ -79,6 +80,7 @@ func normalizeSearchHits(raw []map[string]any) []SearchHit {
 	for _, m := range raw {
 		h := SearchHit{
 			DocID:              stringField(m, "doc_id"),
+			DocName:            stringField(m, "doc_name"),
 			L1ID:               stringField(m, "l1_id"),
 			L2ID:               stringField(m, "l2_id"),
 			L3ID:               coalesce(stringField(m, "l3_id"), stringField(m, "matched_l3_id")),

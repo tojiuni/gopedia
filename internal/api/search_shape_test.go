@@ -20,14 +20,14 @@ func TestParseSearchResultFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 6 || keys[5] != "source_path" {
+	if len(keys) != 7 || keys[1] != "doc_name" || keys[6] != "source_path" {
 		t.Fatalf("summary keys: %v", keys)
 	}
 	keys, err = parseSearchResultFields("standard", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 11 {
+	if len(keys) != 12 {
 		t.Fatalf("standard len: %v", keys)
 	}
 	_, err = parseSearchResultFields("nope", "")
@@ -55,7 +55,8 @@ func TestMarshalSearchResultsSparse(t *testing.T) {
 	t.Parallel()
 	hits := []SearchHit{{
 		DocID: "d1", L1ID: "a", L2ID: "b", L3ID: "c", Score: 0.5,
-		Title: "T", SectionHeading: "S", Snippet: "sn", SourcePath: "/p",
+		DocName: "doc.md",
+		Title:   "T", SectionHeading: "S", Snippet: "sn", SourcePath: "/p",
 		Breadcrumb: "br", SurroundingContext: "ctx",
 	}}
 	pid := int64(3)
@@ -77,6 +78,16 @@ func TestMarshalSearchResultsSparse(t *testing.T) {
 	}
 	if dec[0]["doc_id"] != "d1" || dec[0]["snippet"] != "sn" || dec[0]["source_path"] != "/p" {
 		t.Fatalf("unexpected: %#v", dec[0])
+	}
+	raw, err = marshalSearchResults(hits, []string{"doc_name", "source_path"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &dec); err != nil {
+		t.Fatal(err)
+	}
+	if dec[0]["doc_name"] != "doc.md" {
+		t.Fatalf("doc_name missing: %#v", dec[0])
 	}
 }
 
