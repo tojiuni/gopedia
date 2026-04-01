@@ -45,6 +45,22 @@ def embed_query_openai(query: str, model: Optional[str] = None) -> List[float]:
     return list(r.data[0].embedding)
 
 
+def embed_query_local(query: str, addr: Optional[str] = None) -> List[float]:
+    """Embed a query using the local multilingual-e5-large embedding service.
+
+    Uses the "query: " prefix required by multilingual-e5-large for retrieval.
+    """
+    import urllib.request
+    import json as _json
+
+    url = (addr or os.environ.get("LOCAL_EMBEDDING_ADDR", "http://localhost:18789")) + "/embed"
+    payload = _json.dumps({"texts": [query], "prefix": "query"}).encode()
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req) as resp:
+        data = _json.loads(resp.read())
+    return data["embeddings"][0]
+
+
 def qdrant_search_l3_points(
     query_vector: List[float],
     host: str,
@@ -301,7 +317,10 @@ def retrieve_and_enrich(
         embedding_model=embedding_model,
     )
 
-    vec = embed_query_openai(query, model=resolved.embedding_model)
+    if resolved.embedding_backend == "local":
+        vec = embed_query_local(query, addr=resolved.local_embedding_addr)
+    else:
+        vec = embed_query_openai(query, model=resolved.embedding_model)
     hits = qdrant_search_l3_points(
         vec,
         host=resolved.qdrant_host,
