@@ -77,6 +77,24 @@ services:
       retries: 12
       start_period: 60s
 
+  embedding_service:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile.embedding
+    environment:
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
+    ports:
+      - "${EMBEDDING_PUBLISH_PORT:-18789}:18789"
+    networks:
+      - gopedia-dev
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:18789/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
   gopedia:
     profiles: ["app"]
     build:
@@ -105,6 +123,8 @@ services:
       - QDRANT_VECTOR_NAME=
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_EMBEDDING_MODEL=${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      - GOPEDIA_EMBEDDING_BACKEND=${GOPEDIA_EMBEDDING_BACKEND:-local}
+      - LOCAL_EMBEDDING_ADDR=http://embedding_service:18789
       - GOPEDIA_REPO_ROOT=/app
     ports:
       - "${GOPEDIA_PUBLISH_HTTP:-18787}:18787"
@@ -119,6 +139,8 @@ services:
       qdrant:
         condition: service_healthy
       typedb:
+        condition: service_healthy
+      embedding_service:
         condition: service_healthy
 
 networks:
