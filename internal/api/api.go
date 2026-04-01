@@ -167,6 +167,75 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		fuego.OptionSummary("Semantic search (markdown or format=json; optional detail/fields for JSON)"),
 	)
 
+	fuego.Get(api, "/restore", func(c fuego.ContextNoBody) (RestoreResponse, error) {
+		reqID := newRequestID(c)
+		l1ID := strings.TrimSpace(c.QueryParam("l1_id"))
+		l2ID := strings.TrimSpace(c.QueryParam("l2_id"))
+		if (l1ID == "" && l2ID == "") || (l1ID != "" && l2ID != "") {
+			return RestoreResponse{}, fuego.BadRequestError{
+				Title:  "Bad Request",
+				Detail: "exactly one of l1_id or l2_id is required",
+			}
+		}
+		format := strings.ToLower(strings.TrimSpace(c.QueryParam("format")))
+		if format == "" {
+			format = "markdown"
+		}
+		if format != "markdown" && format != "json" {
+			return RestoreResponse{}, fuego.BadRequestError{
+				Title:  "Bad Request",
+				Detail: "invalid format (use markdown or json)",
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(c, 5*time.Minute)
+		defer cancel()
+
+		args := []string{"restore", "--format", format}
+		if l1ID != "" {
+			args = append(args, "--l1-id", l1ID)
+		}
+		if l2ID != "" {
+			args = append(args, "--l2-id", l2ID)
+		}
+
+		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.cli", args...)
+		resp := RestoreResponse{
+			Stderr:    string(stderr),
+			RequestID: reqID,
+		}
+		if err != nil {
+			resp.Error = err.Error()
+			resp.Failure = newAPIError("PYTHON_RESTORE_FAILED", err.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+			slog.Warn("restore subprocess failed", "err", err, "stderr", resp.Stderr, "request_id", reqID)
+			return resp, nil
+		}
+
+		if format == "json" {
+			var raw map[string]any
+			if uerr := json.Unmarshal(out, &raw); uerr != nil {
+				resp.Error = uerr.Error()
+				resp.Failure = newAPIError("RESTORE_JSON_PARSE", uerr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+				slog.Warn("restore json parse failed", "err", uerr, "request_id", reqID)
+				return resp, nil
+			}
+			encoded, merr := json.Marshal(raw)
+			if merr != nil {
+				resp.Error = merr.Error()
+				resp.Failure = newAPIError("RESTORE_RESULT_ENCODE", merr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+				slog.Warn("restore results encode failed", "err", merr, "request_id", reqID)
+				return resp, nil
+			}
+			resp.Result = encoded
+			return resp, nil
+		}
+
+		resp.Markdown = strings.TrimSpace(string(out))
+		return resp, nil
+	},
+		fuego.OptionSummary("Restore content by l1_id or l2_id (markdown or format=json)"),
+	)
+
 	fuego.Post(api, "/ingest", func(c fuego.ContextWithBody[IngestRequest]) (IngestResponse, error) {
 		reqID := newRequestID(c)
 		body, err := c.Body()

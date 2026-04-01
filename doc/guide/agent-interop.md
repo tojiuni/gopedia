@@ -17,6 +17,7 @@ Gopedia exposes HTTP endpoints intended for **AI agents** and automation: struct
 | GET | `/api/health` | Liveness |
 | GET | `/api/health/deps` | Dependency checks with latency |
 | GET | `/api/search?q=&format=markdown\|json&project_id=&detail=&fields=` | Search (default `format` = markdown). When `format=json`, optional `detail` / `fields` shape `results[]`. |
+| GET | `/api/restore?l1_id=&l2_id=&format=markdown\|json` | Restore stored content from PostgreSQL (`l1_id` full content or `l2_id` section/code). Exactly one id required. |
 | POST | `/api/ingest` | Synchronous ingest (body `{"path":"..."}`) |
 | POST | `/api/ingest/jobs` | Async ingest job |
 | GET | `/api/jobs/{id}` | Job status |
@@ -28,11 +29,11 @@ Only applies when `format=json`. Markdown responses ignore `detail` and `fields`
 | Query | Meaning |
 |-------|---------|
 | *(omit)* or `detail=full` | Full hit objects (all keys; same as before this feature). Includes `surrounding_context` when present. |
-| `detail=summary` | Compact hits: `doc_id`, `l3_id`, `score`, `title`, `snippet`, `source_path`. |
+| `detail=summary` | Compact hits: `doc_id`, `doc_name`, `l3_id`, `score`, `title`, `snippet`, `source_path`. |
 | `detail=standard` | `summary` plus `project_id`, `l1_id`, `l2_id`, `section_heading`, `breadcrumb`. |
 | `fields=a,b,c` | Sparse fieldset (comma-separated JSON keys). **Overrides** `detail` when non-empty. |
 
-Allowed `fields` keys: `doc_id`, `project_id`, `l1_id`, `l2_id`, `l3_id`, `score`, `title`, `section_heading`, `snippet`, `source_path`, `breadcrumb`, `surrounding_context`.
+Allowed `fields` keys: `doc_id`, `project_id`, `doc_name`, `l1_id`, `l2_id`, `l3_id`, `score`, `title`, `section_heading`, `snippet`, `source_path`, `breadcrumb`, `surrounding_context`.
 
 Invalid `detail` or unknown `fields` key → **HTTP 400** with Fuego error body.
 
@@ -61,6 +62,18 @@ Custom sparse fields (`fields` wins over `detail`):
 curl -s "http://127.0.0.1:18787/api/search?q=Introduction&format=json&fields=title,snippet,l3_id,score"
 ```
 
+## Restore API
+
+Restore full content from PostgreSQL snapshots without re-embedding.
+
+```bash
+# Restore full L1 content (markdown response)
+curl -s "http://127.0.0.1:18787/api/restore?l1_id=<L1_UUID>"
+
+# Restore a specific L2 section (usually code section) as JSON
+curl -s "http://127.0.0.1:18787/api/restore?l2_id=<L2_UUID>&format=json"
+```
+
 ## Structured errors
 
 On subprocess failures, ingest and search return **HTTP 200** with a JSON body that includes:
@@ -77,6 +90,8 @@ Pass `X-Request-ID` to correlate logs; the response echoes `request_id` when gen
 - `gopedia search "query" --json` — prints the JSON body from `GET /api/search?format=json` (full `results` by default).
 - `gopedia search "query" --json --detail summary` — same with `detail=summary`.
 - `gopedia search "query" --json --fields title,snippet,l3_id` — sparse `fields` (overrides `--detail`).
+- `gopedia restore --l1-id <uuid>` — restore full content for one `knowledge_l1` snapshot.
+- `gopedia restore --l2-id <uuid> --json` — restore one `knowledge_l2` section as JSON payload.
 - `gopedia ingest path/to/dir --json` — prints the full JSON body from `POST /api/ingest`.
 
 ## Backward compatibility

@@ -162,7 +162,7 @@ Requires `pip install -r requirements.txt` and `python-dotenv` on the host.
 
 ---
 
-## 5. `gopedia` CLI (ingest and search)
+## 5. `gopedia` CLI (ingest, search, restore)
 
 Build the CLI (Go 1.24+ or `GOTOOLCHAIN=auto`):
 
@@ -191,18 +191,35 @@ export GOPEDIA_API_URL=http://127.0.0.1:18787   # default; optional
 
 `--detail` and `--fields` require `--json`. `--fields` overrides `--detail` when both are given.
 
+**Restore** (PostgreSQL snapshot):
+
+```bash
+./gopedia restore --l1-id <l1_uuid>             # restore full content (markdown)
+./gopedia restore --l2-id <l2_uuid>             # restore one L2 section (markdown)
+./gopedia restore --l2-id <l2_uuid> --json      # full JSON response
+```
+
+Exactly one of `--l1-id` or `--l2-id` is required.
+
 **Search detail presets** (`?detail=` / `--detail`):
 
 | Preset | Fields returned |
 |--------|----------------|
 | `full` (default) | all fields including `surrounding_context` |
-| `standard` | `doc_id`, `project_id`, `l1_id`, `l2_id`, `l3_id`, `score`, `title`, `section_heading`, `snippet`, `source_path`, `breadcrumb` |
-| `summary` | `doc_id`, `l3_id`, `score`, `title`, `snippet`, `source_path` |
+| `standard` | `doc_id`, `project_id`, `doc_name`, `l1_id`, `l2_id`, `l3_id`, `score`, `title`, `section_heading`, `snippet`, `source_path`, `breadcrumb` |
+| `summary` | `doc_id`, `doc_name`, `l3_id`, `score`, `title`, `snippet`, `source_path` |
 
 **Filter by project** (HTTP API):
 
 ```bash
 curl -s "http://127.0.0.1:18787/api/search?q=Introduction&project_id=123&format=json"
+```
+
+**Restore via HTTP API:**
+
+```bash
+curl -s "http://127.0.0.1:18787/api/restore?l1_id=<l1_uuid>"
+curl -s "http://127.0.0.1:18787/api/restore?l2_id=<l2_uuid>&format=json"
 ```
 
 **Run local API server:**
