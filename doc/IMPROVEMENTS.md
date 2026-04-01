@@ -107,6 +107,33 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 
 ---
 
+## P1 — v0.4.0 신규
+
+### IMP-09: L3 청크 컨텍스트 보강 (Contextual Embedding) ✅ v0.4.0
+- **카테고리**: Phloem / Sink / Embedding
+- **현상**: 짧은 영어 bullet-point L3 청크(`"- **Distro**: Rocky Linux 9.6"`)가 한국어 쿼리와 semantic gap.
+  v0.3.0에서 q_server_os_specs, q_docker_registry_auth, q_gopedia_envelope_strategy가 top-30 밖으로 회귀.
+- **해결**: L3 임베딩 시 섹션 제목 행을 청크 앞에 prepend.
+  `embedText = headingLine + "\n" + l3.text` (예: `"## Server OS\n- **Distro**: Rocky Linux 9.6..."`)
+  - `l3ToEmbed` 구조체에 `headingText string` 필드 추가.
+  - 마크다운 L3 빌드 루프에서 `headingText: headingLine` 설정.
+  - 코드 도메인 청크는 `headingText` 비워둠 (함수 시그니처가 이미 컨텍스트 역할).
+  - 저장된 L3 content는 변경 없음 — 임베딩 텍스트만 달라짐.
+- **관련 파일**: `internal/phloem/sink/writer.go`
+
+---
+
+### IMP-10: Universitas Architecture Blueprint 인제스트 ✅ v0.4.0
+- **카테고리**: Phloem / Ingest / 데이터
+- **현상**: `q_universitas_bio_groups` — "neunexus, taxon, osteon은 인체의 어떤 체계를 모사하나" 쿼리가 2 버전 연속 MISS.
+  원인: `Universitas_System_Architecture_Blueprint.md`가 인제스트되지 않아 관련 L3 청크가 존재하지 않음.
+- **해결**: `universitas_architecture` 프로젝트 신규 생성 후 다음 파일 인제스트:
+  - `/neunexus/geneso/universitas/Universitas_System_Architecture_Blueprint.md`
+  - `/neunexus/geneso/universitas/docs/arch/bio_inspired_blueprint.md`
+- **관련 파일**: 인제스트 런타임 운영 (코드 변경 없음)
+
+---
+
 ## 항목 요약
 
 | ID | 우선순위 | 카테고리 | 제목 | 상태 |
@@ -119,3 +146,5 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 | IMP-06 | P3 | 릴리즈/DevOps | 버전 태그 관리 자동화 + CHANGELOG | ✅ v0.2.0 |
 | IMP-07 | P3 | Phloem/운영 | 인제스트 이력 추적 (Audit log) | ✅ v0.2.0 |
 | IMP-08 | **P1** | Phloem+Xylem/Embedding | multilingual-e5-large 도입 + 로컬 임베딩 서비스 | ✅ v0.3.0 |
+| IMP-09 | **P1** | Phloem/Sink/Embedding | L3 청크 컨텍스트 보강 (Contextual Embedding) | ✅ v0.4.0 |
+| IMP-10 | **P1** | Phloem/Ingest/데이터 | Universitas Architecture Blueprint 인제스트 | ✅ v0.4.0 |

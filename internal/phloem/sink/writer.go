@@ -352,6 +352,7 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 					sectionID:   c.SectionID,
 					sectionType: secType,
 					text:        ins.text,
+					headingText: headingLine,
 					versionID:   versionID,
 					sourceType:  sourceType,
 				})
@@ -391,7 +392,13 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 		}
 
 		for _, item := range l3Items {
-			vec, err := s.embed.Embed(ctx, item.text)
+			// IMP-09: prepend section heading for contextual embedding.
+			// This closes the semantic gap between short bullet-point L3 chunks and Korean queries.
+			embedText := item.text
+			if item.headingText != "" {
+				embedText = item.headingText + "\n" + item.text
+			}
+			vec, err := s.embed.Embed(ctx, embedText)
 			if err != nil {
 				slog.Warn("embed L3 failed", "l3_id", item.l3ID, "err", err)
 				continue
@@ -491,6 +498,9 @@ type l3ToEmbed struct {
 	sectionID   string
 	sectionType string
 	text        string
+	// headingText is the section heading line prepended to text at embed time (IMP-09 contextual embedding).
+	// Empty for code domain chunks (which already carry function-signature context in text).
+	headingText string
 	versionID   int64
 	sourceType  string
 }
