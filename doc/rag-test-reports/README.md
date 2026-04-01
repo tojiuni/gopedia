@@ -101,3 +101,5 @@ curl -s "$GARDENER/compare?baseline=$BASE&candidate=$CAND&metric=Recall@5" | jq 
 |------|------|------|------|
 | v0.1.0 | 2026-04-01 | neunexus, gopedia universitas | [v0.1.0_2026-04-01_neunexus-gopedia.md](v0.1.0_2026-04-01_neunexus-gopedia.md) |
 | v0.2.0 | 2026-04-01 | neunexus, gopedia universitas, 코드 도메인 | [v0.2.0_2026-04-01_neunexus-gopedia.md](v0.2.0_2026-04-01_neunexus-gopedia.md) |
+| v0.3.0 | 2026-04-01 | neunexus, gopedia universitas + 전체 Universitas(gardener) | [v0.3.0_2026-04-01_neunexus-gopedia.md](v0.3.0_2026-04-01_neunexus-gopedia.md) |
+| v0.4.0-dev | 2026-04-01 | IMP-02 API 연동 + 재기동 후 gardener 재측정 | [v0.4.0_2026-04-01_neunexus-gopedia.md](v0.4.0_2026-04-01_neunexus-gopedia.md) |

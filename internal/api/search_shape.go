@@ -10,6 +10,7 @@ import (
 var allowedSearchResultJSONKeys = map[string]struct{}{
 	"doc_id":              {},
 	"project_id":          {},
+	"doc_name":            {},
 	"l1_id":               {},
 	"l2_id":               {},
 	"l3_id":               {},
@@ -32,10 +33,10 @@ func parseSearchResultFields(detail, fieldsCSV string) ([]string, error) {
 	case "", "full":
 		return nil, nil
 	case "summary":
-		return []string{"doc_id", "l3_id", "score", "title", "snippet", "source_path"}, nil
+		return []string{"doc_id", "doc_name", "l3_id", "score", "title", "snippet", "source_path"}, nil
 	case "standard":
 		return []string{
-			"doc_id", "project_id", "l1_id", "l2_id", "l3_id", "score", "title",
+			"doc_id", "project_id", "doc_name", "l1_id", "l2_id", "l3_id", "score", "title",
 			"section_heading", "snippet", "source_path", "breadcrumb",
 		}, nil
 	default:
@@ -77,6 +78,8 @@ func searchHitToMap(h SearchHit, keys []string) map[string]any {
 			if h.ProjectID != nil {
 				m["project_id"] = *h.ProjectID
 			}
+		case "doc_name":
+			m["doc_name"] = h.DocName
 		case "l1_id":
 			m["l1_id"] = h.L1ID
 		case "l2_id":
