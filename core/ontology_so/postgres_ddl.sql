@@ -150,3 +150,6 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_l3_source_metadata
 COMMENT ON COLUMN knowledge_l3.source_metadata IS
 'code domain: {"node_type":"function_definition","is_anchor":true,"is_block_start":false,"line_num":26}
  markdown domain: {} (empty object, backward-compatible default)';
+
+-- IMP-07: ingest audit — which gopedia version wrote this document row.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS ingest_version TEXT NOT NULL DEFAULT '';

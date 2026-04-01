@@ -70,6 +70,28 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			return "", fmt.Errorf("postgres pipeline_version: %w", err)
 		}
 
+		// IMP-01: title-based duplicate prevention — check before machine_id lookup.
+		var titleDocID uuid.UUID
+		var titleL2Hash []byte
+		titleErr := s.pg.QueryRow(ctx,
+			`SELECT k.document_id, k.l2_child_hash
+			   FROM knowledge_l1 k
+			  WHERE k.title = $1 AND k.source_type = $2
+			  ORDER BY k.created_at DESC
+			  LIMIT 1`,
+			msg.Title, sourceType,
+		).Scan(&titleDocID, &titleL2Hash)
+		if titleErr == nil && string(titleL2Hash) == string(l2ChildHash) {
+			// Same title and same content hash — return the existing document UUID.
+			var existingUUIDByTitle uuid.UUID
+			if lookupErr := s.pg.QueryRow(ctx,
+				`SELECT id FROM documents WHERE id = $1`, titleDocID,
+			).Scan(&existingUUIDByTitle); lookupErr == nil {
+				return existingUUIDByTitle.String(), nil
+			}
+		}
+		// titleErr == nil but hash differs → fall through to normal upsert (version bump).
+
 		var existingDocID uuid.UUID
 		qerr := s.pg.QueryRow(ctx, `SELECT id FROM documents WHERE machine_id = $1`, msg.MachineId).Scan(&existingDocID)
 		if qerr == nil {
@@ -111,19 +133,22 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 
 		metaJSON, _ := json.Marshal(msg.SourceMetadata)
 		projectID := ingestProjectIDPtrFromMetadata(msg.SourceMetadata)
+		// IMP-07: capture the gopedia version that performed this ingest.
+		ingestVersion := getEnv("GOPEDIA_VERSION", "dev")
 		var docUUID uuid.UUID
 		err = s.pg.QueryRow(ctx,
-			`INSERT INTO documents (machine_id, title, source_metadata, version, version_id, created_at, project_id, source_type)
-			 VALUES ($1, $2, $3, $4, $5, now(), $6, $7)
+			`INSERT INTO documents (machine_id, title, source_metadata, version, version_id, created_at, project_id, source_type, ingest_version)
+			 VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8)
 			 ON CONFLICT (machine_id) DO UPDATE SET
 			   title = EXCLUDED.title,
 			   source_metadata = EXCLUDED.source_metadata,
 			   version = documents.version + 1,
 			   version_id = EXCLUDED.version_id,
 			   project_id = COALESCE(EXCLUDED.project_id, documents.project_id),
-			   source_type = EXCLUDED.source_type
+			   source_type = EXCLUDED.source_type,
+			   ingest_version = EXCLUDED.ingest_version
 			 RETURNING id`,
-			msg.MachineId, msg.Title, metaJSON, version, versionID, projectID, sourceType,
+			msg.MachineId, msg.Title, metaJSON, version, versionID, projectID, sourceType, ingestVersion,
 		).Scan(&docUUID)
 		if err != nil {
 			return "", fmt.Errorf("postgres documents: %w", err)
@@ -995,6 +1020,7 @@ func summarizeL2(docTitle, parentPath, l2Text string) string {
 	if sum == "" {
 		sum = body
 	}
+	sum = annotateKoreanTerms(sum)
 	sum = truncateUTF8ByBytes(sum, 400)
 	if docTitle != "" || parentPath != "" {
 		prefix := strings.TrimSpace(docTitle)
@@ -1033,6 +1059,46 @@ func summarizeL1(docTitle string, l2Summaries []string) string {
 	out := b.String()
 	out = truncateUTF8ByBytes(out, 1200)
 	return strings.TrimSpace(out)
+}
+
+// annotateKoreanTerms appends English equivalents for known Korean technical terms found in
+// the input text. This improves cross-language recall when documents contain Korean-only
+// terminology that users query in English (IMP-03).
+// Format: original text + " [en: term1 term2 ...]"
+func annotateKoreanTerms(text string) string {
+	type kv struct{ ko, en string }
+	terms := []kv{
+		{"파티션", "partition"},
+		{"워터마킹", "watermarking"},
+		{"스마트 싱크", "smart sink"},
+		{"싱크", "sink"},
+		{"인제스트", "ingest"},
+		{"임베딩", "embedding"},
+		{"임베드", "embed"},
+		{"검색", "search retrieval"},
+		{"파이프라인", "pipeline"},
+		{"라우팅", "routing"},
+		{"중복", "duplicate deduplication"},
+		{"청크", "chunk"},
+		{"벡터", "vector"},
+		{"색인", "index"},
+		{"요약", "summary"},
+		{"복원", "restore"},
+		{"계층", "layer hierarchy"},
+		{"도메인", "domain"},
+		{"컬렉션", "collection"},
+		{"스키마", "schema"},
+	}
+	var annotations []string
+	for _, t := range terms {
+		if strings.Contains(text, t.ko) {
+			annotations = append(annotations, t.en)
+		}
+	}
+	if len(annotations) == 0 {
+		return text
+	}
+	return text + " [en: " + strings.Join(annotations, " ") + "]"
 }
 
 // truncateUTF8ByBytes returns s unchanged if len(s) <= maxBytes; otherwise the longest

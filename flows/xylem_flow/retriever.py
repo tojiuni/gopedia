@@ -19,7 +19,8 @@ SELECT
   k1.title AS l1_title,
   k1.id::text AS l1_id,
   k1.summary AS l1_summary,
-  k1.toc AS l1_toc
+  k1.toc AS l1_toc,
+  k1.source_type AS l1_source_type
 FROM knowledge_l3 l3
 JOIN knowledge_l2 l2 ON l3.l2_id = l2.id
 JOIN knowledge_l1 k1 ON l2.l1_id = k1.id
@@ -172,6 +173,7 @@ def fetch_rich_context(
             l1_id,
             l1_summary_blob,
             l1_toc,
+            l1_source_type,
         ) = row
 
     so = int(sort_order) if sort_order is not None else 0
@@ -214,6 +216,9 @@ def fetch_rich_context(
         except json.JSONDecodeError:
             l2_meta = {}
 
+    source_path = l1_title if (l1_source_type or "") == "code" else ""
+    doc_name = l2_meta.get("name") or l2_meta.get("project_id", "") if l2_meta else ""
+
     ctx: dict = {
         "breadcrumb": _breadcrumb(l1_title or "", section_heading or ""),
         "l1_id": l1_id or "",
@@ -226,6 +231,8 @@ def fetch_rich_context(
         "matched_l3_id": lid,
         "matched_content": matched or "",
         "surrounding_context": window_text,
+        "source_path": source_path,
+        "doc_name": doc_name,
     }
     if level >= 3:
         ctx["l1_summary"] = l1_summary_text
