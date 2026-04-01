@@ -15,61 +15,59 @@ import (
 func checkPostgres() DepStatus {
 	t0 := time.Now()
 	cs := pgConnString()
-	if cs == "" {
-		return DepStatus{Status: "skipped", Error: "postgres not configured"}
+	if cs != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		pool, err := pgxpool.New(ctx, cs)
+		if err != nil {
+			return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), CheckLevel: "full", Error: err.Error()}
+		}
+		defer pool.Close()
+		if err := pool.Ping(ctx); err != nil {
+			return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), CheckLevel: "full", Error: err.Error()}
+		}
+		return DepStatus{Status: "ok", LatencyMs: elapsedMs(t0), CheckLevel: "full"}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, cs)
-	if err != nil {
-		return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), Error: err.Error()}
-	}
-	defer pool.Close()
-	if err := pool.Ping(ctx); err != nil {
-		return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), Error: err.Error()}
-	}
-	return DepStatus{Status: "ok", LatencyMs: elapsedMs(t0)}
+	host := getEnv("POSTGRES_HOST", "127.0.0.1")
+	port := getEnv("POSTGRES_PORT", "5432")
+	return checkTCP(t0, host, port, "tcp")
 }
 
 func checkQdrant() DepStatus {
 	t0 := time.Now()
 	host := getEnv("QDRANT_HOST", "")
-	if host == "" {
-		return DepStatus{Status: "skipped", Error: "QDRANT_HOST not set"}
+	if host != "" {
+		port := 6334
+		if p, err := strconv.Atoi(getEnv("QDRANT_GRPC_PORT", getEnv("QDRANT_PORT", "6334"))); err == nil {
+			port = p
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		client, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+		if err != nil {
+			return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), CheckLevel: "full", Error: err.Error()}
+		}
+		defer client.Close()
+		coll := getEnv("QDRANT_COLLECTION", "gopedia_markdown")
+		_, err = client.GetCollectionInfo(ctx, coll)
+		if err != nil {
+			return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), CheckLevel: "full", Error: err.Error()}
+		}
+		return DepStatus{Status: "ok", LatencyMs: elapsedMs(t0), CheckLevel: "full"}
 	}
-	port := 6334
-	if p, err := strconv.Atoi(getEnv("QDRANT_GRPC_PORT", getEnv("QDRANT_PORT", "6334"))); err == nil {
-		port = p
+	// Best-effort fallback for environments without explicit .env.
+	// Try gRPC first, then HTTP port.
+	if st := checkTCP(t0, "127.0.0.1", "6334", "tcp"); st.Status == "ok" {
+		return st
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	client, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
-	if err != nil {
-		return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), Error: err.Error()}
-	}
-	defer client.Close()
-	coll := getEnv("QDRANT_COLLECTION", "gopedia_markdown")
-	_, err = client.GetCollectionInfo(ctx, coll)
-	if err != nil {
-		return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), Error: err.Error()}
-	}
-	return DepStatus{Status: "ok", LatencyMs: elapsedMs(t0)}
+	return checkTCP(t0, "127.0.0.1", "6333", "tcp")
 }
 
 func checkTypeDB() DepStatus {
 	t0 := time.Now()
-	host := getEnv("TYPEDB_HOST", "")
-	if host == "" {
-		return DepStatus{Status: "skipped", Error: "TYPEDB_HOST not set"}
-	}
+	host := getEnv("TYPEDB_HOST", "127.0.0.1")
 	port := getEnv("TYPEDB_PORT", "1729")
-	addr := net.JoinHostPort(host, port)
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
-	if err != nil {
-		return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), Error: err.Error()}
-	}
-	_ = conn.Close()
-	return DepStatus{Status: "ok", LatencyMs: elapsedMs(t0)}
+	return checkTCP(t0, host, port, "tcp")
 }
 
 func checkPhloemGRPC() DepStatus {
@@ -83,12 +81,22 @@ func checkPhloemGRPC() DepStatus {
 	}
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), Error: err.Error()}
+		return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), CheckLevel: "grpc", Error: err.Error()}
 	}
 	_ = conn.Close()
-	return DepStatus{Status: "ok", LatencyMs: elapsedMs(t0)}
+	return DepStatus{Status: "ok", LatencyMs: elapsedMs(t0), CheckLevel: "grpc"}
 }
 
 func elapsedMs(t0 time.Time) int64 {
 	return time.Since(t0).Milliseconds()
+}
+
+func checkTCP(t0 time.Time, host, port, level string) DepStatus {
+	addr := net.JoinHostPort(host, port)
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), CheckLevel: level, Error: err.Error()}
+	}
+	_ = conn.Close()
+	return DepStatus{Status: "ok", LatencyMs: elapsedMs(t0), CheckLevel: level}
 }

@@ -79,9 +79,10 @@ type HealthDepsResponse struct {
 
 // DepStatus is one dependency check result for /api/health/deps.
 type DepStatus struct {
-	Status    string `json:"status"`
-	LatencyMs int64  `json:"latency_ms,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Status     string `json:"status"`
+	LatencyMs  int64  `json:"latency_ms,omitempty"`
+	CheckLevel string `json:"check_level,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // normalizeSearchHits maps Python retrieve_and_enrich JSON objects to SearchHit.

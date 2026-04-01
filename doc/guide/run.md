@@ -95,7 +95,7 @@ Dependency checks (for agents / ops):
 
 ```bash
 curl -s http://127.0.0.1:18787/api/health/deps
-# Expect: {"status":"ok"|"degraded","deps":{"postgres":{...},"qdrant":{...},"typedb":{...},"phloem":{...}},...}
+# Expect: {"status":"ok"|"degraded","deps":{"postgres":{"status":"ok|error","check_level":"full|tcp",...},"qdrant":{...},"typedb":{...},"phloem":{"check_level":"grpc",...}},...}
 ```
 
 JSON search (machine-readable hits):
@@ -308,6 +308,7 @@ docker compose -f docker-compose.dev.yml --env-file .env down -v
 | `docker compose` not found | Install Compose v2 plugin or `docker-compose` standalone ([install.md](install.md)). |
 | Pull / auth errors on macOS | `credsStore` / missing `docker-credential-desktop` ([install.md](install.md)). |
 | API 502 / ingest errors | `OPENAI_API_KEY`, DB connectivity, and `DBInitializer` completed successfully. |
+| `GET /api/search` works but `GET /api/restore` returns 404 | The running `./gopedia` binary is likely stale (built before restore route updates). Rebuild and restart: `GOTOOLCHAIN=auto go build -o gopedia ./cmd/gopedia` then `./gopedia server --addr 0.0.0.0:18787`. |
 | Wrong network in scripts | `DOCKER_NETWORK_EXTERNAL=gopedia-dev` matches [`docker-compose.dev.yml`](../../docker-compose.dev.yml) `networks.gopedia-dev.name`. `run_ingestion_docker.sh` ignores this — use `run_fresh_ingestion_docker.sh` instead. |
 | Port already allocated | Change `*_PUBLISH_*` variables in `.env`. |
 | `gopedia server` on wrong port | Default is 8787, not 18787. Set `--addr` or `GOPEDIA_HTTP_ADDR`. |

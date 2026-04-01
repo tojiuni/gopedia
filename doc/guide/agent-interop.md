@@ -16,6 +16,15 @@ Gopedia exposes HTTP endpoints intended for **AI agents** and automation: struct
 |--------|------|---------|
 | GET | `/api/health` | Liveness |
 | GET | `/api/health/deps` | Dependency checks with latency |
+`/api/health/deps` returns dependency objects with:
+
+- `status`: `ok` or `error`
+- `latency_ms`: probe latency
+- `check_level`: probe depth (`full`, `tcp`, or `grpc`)
+- `error`: present when probe fails
+
+When full DB env values are missing, the API now performs best-effort localhost TCP probes for Postgres/Qdrant/TypeDB instead of returning `skipped`.
+
 | GET | `/api/search?q=&format=markdown\|json&project_id=&detail=&fields=` | Search (default `format` = markdown). When `format=json`, optional `detail` / `fields` shape `results[]`. |
 | GET | `/api/restore?l1_id=&l2_id=&format=markdown\|json` | Restore stored content from PostgreSQL (`l1_id` full content or `l2_id` section/code). Exactly one id required. |
 | POST | `/api/ingest` | Synchronous ingest (body `{"path":"..."}`) |
