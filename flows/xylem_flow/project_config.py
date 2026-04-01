@@ -46,6 +46,8 @@ class ResolvedRetrievalSettings:
     collection: str
     vector_name: Optional[str]
     embedding_model: str
+    embedding_backend: str          # "openai" | "local"
+    local_embedding_addr: str       # base URL for local embedding service
 
 
 def _meta_str(meta: Mapping[str, str], key: str) -> Optional[str]:
@@ -112,10 +114,24 @@ def resolve_retrieval_settings(
             return v
         return env.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
+    def pick_embedding_backend() -> str:
+        v = _meta_str(meta, "GOPEDIA_EMBEDDING_BACKEND")
+        if v is not None:
+            return v
+        return env.get("GOPEDIA_EMBEDDING_BACKEND", "openai")
+
+    def pick_local_embedding_addr() -> str:
+        v = _meta_str(meta, "LOCAL_EMBEDDING_ADDR")
+        if v is not None:
+            return v
+        return env.get("LOCAL_EMBEDDING_ADDR", "http://localhost:18789")
+
     return ResolvedRetrievalSettings(
         qdrant_host=pick_host(),
         qdrant_port=pick_port(),
         collection=pick_collection(),
         vector_name=pick_vector_name(),
         embedding_model=pick_embedding_model(),
+        embedding_backend=pick_embedding_backend(),
+        local_embedding_addr=pick_local_embedding_addr(),
     )

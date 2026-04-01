@@ -86,6 +86,27 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 
 ---
 
+---
+
+## P1 — v0.3.0 신규
+
+### IMP-08: multilingual-e5-large 임베딩 모델 도입 ✅ v0.3.0
+- **카테고리**: Phloem+Xylem / Embedding
+- **현상**: OpenAI `text-embedding-3-small` (1536 dims)은 G6 `smart sink routing strategy` 0.474로 한국어-영어 혼용 쿼리에 취약; API 비용 발생.
+- **해결**:
+  - `python/embedding_service/` — FastAPI + `sentence-transformers` 로컬 서비스 (포트 18789)
+  - `Dockerfile.embedding` — `intfloat/multilingual-e5-large` 모델 사전 다운로드 포함
+  - `internal/phloem/embedder/local.go` — Go HTTP embedder, `passage:` prefix로 L3 임베딩
+  - `embedder.Embedder` 인터페이스에 `VectorSize() int` 추가 → Qdrant 컬렉션 크기 자동 설정
+  - `GOPEDIA_EMBEDDING_BACKEND=local|openai` 환경변수로 백엔드 선택
+  - Python retriever: `embed_query_local()` 추가, `query:` prefix 사용
+  - Qdrant 벡터 크기: 1536 → 1024
+- **측정 효과**: neunexus 평균 0.678 → 0.899 (+0.221), gopedia 평균 0.594 → 0.869 (+0.275)
+  G6 smart sink: 0.474 → 0.841 (+0.367). MRR@10: 0.389 → 0.560 (+44%).
+- **관련 파일**: `python/embedding_service/main.py`, `Dockerfile.embedding`, `internal/phloem/embedder/local.go`, `internal/phloem/embedder/embedder.go`, `internal/api/api.go`, `flows/xylem_flow/retriever.py`, `flows/xylem_flow/project_config.py`, `docker-compose.dev.yml`
+
+---
+
 ## 항목 요약
 
 | ID | 우선순위 | 카테고리 | 제목 | 상태 |
@@ -97,3 +118,4 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 | IMP-05 | P2 | 품질 테스트 | Gardener 코드 도메인 smoke 데이터셋 등록 | ✅ v0.2.0 |
 | IMP-06 | P3 | 릴리즈/DevOps | 버전 태그 관리 자동화 + CHANGELOG | ✅ v0.2.0 |
 | IMP-07 | P3 | Phloem/운영 | 인제스트 이력 추적 (Audit log) | ✅ v0.2.0 |
+| IMP-08 | **P1** | Phloem+Xylem/Embedding | multilingual-e5-large 도입 + 로컬 임베딩 서비스 | ✅ v0.3.0 |
