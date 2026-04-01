@@ -26,3 +26,4 @@ git push origin v0.2.0
 | 버전 | 날짜 | 대상 | 파일 |
 |------|------|------|------|
 | v0.1.0 | 2026-04-01 | neunexus, gopedia universitas | [v0.1.0_2026-04-01_neunexus-gopedia.md](v0.1.0_2026-04-01_neunexus-gopedia.md) |
+| v0.2.0 | 2026-04-01 | neunexus, gopedia universitas, 코드 도메인 | [v0.2.0_2026-04-01_neunexus-gopedia.md](v0.2.0_2026-04-01_neunexus-gopedia.md) |
