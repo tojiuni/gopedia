@@ -263,12 +263,22 @@ func startPhloemGRPC(grpcAddr string) {
 			slog.Info("qdrant connected")
 		}
 	}
+	// Embedder must be initialized before Qdrant collection so vector size is correct.
+	var emb embedder.Embedder
+	if os.Getenv("GOPEDIA_EMBEDDING_BACKEND") == "local" {
+		emb = embedder.NewLocal()
+		slog.Info("embedding backend: local", "addr", os.Getenv("LOCAL_EMBEDDING_ADDR"))
+	} else {
+		emb = embedder.NewOpenAI()
+		slog.Info("embedding backend: openai", "model", os.Getenv("OPENAI_EMBEDDING_MODEL"))
+	}
+
 	if qdrantClient != nil {
 		collection := getEnv("QDRANT_COLLECTION", "gopedia_markdown")
-		if err := ontologyso.EnsureQdrantCollection(ctx, qdrantClient, collection, ontologyso.DefaultVectorSize); err != nil {
+		if err := ontologyso.EnsureQdrantCollection(ctx, qdrantClient, collection, uint64(emb.VectorSize())); err != nil {
 			slog.Warn("qdrant ensure collection failed", "err", err)
 		} else {
-			slog.Info("qdrant collection ready", "collection", collection)
+			slog.Info("qdrant collection ready", "collection", collection, "vector_size", emb.VectorSize())
 		}
 	}
 
@@ -281,8 +291,6 @@ func startPhloemGRPC(grpcAddr string) {
 		})
 		slog.Info("redis configured", "addr", host+":"+port)
 	}
-
-	emb := embedder.NewOpenAI()
 	defaultSink := sink.NewDefaultSink(sink.SinkConfig{
 		PGPool:   pgPool,
 		Qdrant:   qdrantClient,
