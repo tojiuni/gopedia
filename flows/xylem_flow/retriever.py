@@ -105,26 +105,6 @@ def _decode_byte_summary(blob: Any) -> str:
     return str(blob)
 
 
-def _is_code_source(source_path: str) -> bool:
-    """Return True if the source file is a code file (not markdown)."""
-    lower = (source_path or "").lower()
-    return any(lower.endswith(ext) for ext in (
-        ".py", ".go", ".ts", ".tsx", ".js", ".jsx", ".java", ".rs", ".cpp", ".c", ".h"
-    ))
-
-
-def _build_section_heading(hit: dict) -> str:
-    """Return section heading appropriate for the source type.
-
-    For code sources, surface the function/class signature from l2_summary.
-    For markdown, use the section_heading (heading line).
-    """
-    source_path = hit.get("source_path", "")
-    if _is_code_source(source_path):
-        return hit.get("l2_summary") or hit.get("section_heading") or ""
-    return hit.get("section_heading") or ""
-
-
 def _breadcrumb(l1_title: str, section_heading: str) -> str:
     doc = (l1_title or "").strip() or "(untitled)"
     sec = (section_heading or "").strip() or "(section)"
