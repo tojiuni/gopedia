@@ -34,6 +34,16 @@ type SearchHit struct {
 	SurroundingContext string  `json:"surrounding_context,omitempty"`
 }
 
+// RestoreResponse is the JSON body for GET /api/restore.
+type RestoreResponse struct {
+	Markdown  string          `json:"markdown,omitempty"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Stderr    string          `json:"stderr,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	Failure   *APIError       `json:"failure,omitempty"`
+	RequestID string          `json:"request_id,omitempty"`
+}
+
 // IngestJobRequest is the body for POST /api/ingest/jobs.
 type IngestJobRequest struct {
 	Path      string `json:"path"`
@@ -69,9 +79,10 @@ type HealthDepsResponse struct {
 
 // DepStatus is one dependency check result for /api/health/deps.
 type DepStatus struct {
-	Status    string `json:"status"`
-	LatencyMs int64  `json:"latency_ms,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Status     string `json:"status"`
+	LatencyMs  int64  `json:"latency_ms,omitempty"`
+	CheckLevel string `json:"check_level,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // normalizeSearchHits maps Python retrieve_and_enrich JSON objects to SearchHit.

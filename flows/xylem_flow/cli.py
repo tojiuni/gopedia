@@ -63,8 +63,9 @@ def cmd_search(args: argparse.Namespace) -> int:
         print("empty query", file=sys.stderr)
         return 2
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("OPENAI_API_KEY required for semantic search", file=sys.stderr)
+    embedding_backend = os.environ.get("GOPEDIA_EMBEDDING_BACKEND", "openai").strip().lower()
+    if embedding_backend != "local" and not os.environ.get("OPENAI_API_KEY"):
+        print("OPENAI_API_KEY required for semantic search when backend is not local", file=sys.stderr)
         return 2
 
     try:
@@ -117,6 +118,39 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_restore(args: argparse.Namespace) -> int:
+    from flows.xylem_flow.restorer import restore_code_for_l2, restore_content_for_l1
+
+    l1_id = (args.l1_id or "").strip()
+    l2_id = (args.l2_id or "").strip()
+    if (not l1_id and not l2_id) or (l1_id and l2_id):
+        print("exactly one of --l1-id or --l2-id is required", file=sys.stderr)
+        return 2
+
+    try:
+        with _pg_connect() as conn:
+            if l1_id:
+                restored = restore_content_for_l1(conn, l1_id)
+                content = restored.get("content") or ""
+            else:
+                content = restore_code_for_l2(conn, l2_id)
+                restored = {
+                    "l2_id": l2_id,
+                    "content": content,
+                    "source_type": "code",
+                }
+    except Exception as e:
+        print(f"restore failed: {e}", file=sys.stderr)
+        return 2
+
+    if args.format == "json":
+        print(json.dumps(restored, ensure_ascii=False, default=str))
+        return 0
+
+    print(str(content).strip())
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Gopedia Xylem CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -159,6 +193,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Load Qdrant/PG settings from projects.source_metadata and filter Qdrant by project_id",
     )
     p_search.set_defaults(func=cmd_search)
+
+    p_restore = sub.add_parser("restore", help="Restore content from PostgreSQL by l1_id or l2_id")
+    p_restore.add_argument("--l1-id", default="", help="knowledge_l1.id UUID to restore full content")
+    p_restore.add_argument("--l2-id", default="", help="knowledge_l2.id UUID to restore code section")
+    p_restore.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="Output format (default: markdown)",
+    )
+    p_restore.set_defaults(func=cmd_restore)
 
     args = parser.parse_args(argv)
     fn = getattr(args, "func", None)

@@ -95,7 +95,7 @@ Dependency checks (for agents / ops):
 
 ```bash
 curl -s http://127.0.0.1:18787/api/health/deps
-# Expect: {"status":"ok"|"degraded","deps":{"postgres":{...},"qdrant":{...},"typedb":{...},"phloem":{...}},...}
+# Expect: {"status":"ok"|"degraded","deps":{"postgres":{"status":"ok|error","check_level":"full|tcp",...},"qdrant":{...},"typedb":{...},"phloem":{"check_level":"grpc",...}},...}
 ```
 
 JSON search (machine-readable hits):
@@ -162,7 +162,7 @@ Requires `pip install -r requirements.txt` and `python-dotenv` on the host.
 
 ---
 
-## 5. `gopedia` CLI (ingest and search)
+## 5. `gopedia` CLI (ingest, search, restore)
 
 Build the CLI (Go 1.24+ or `GOTOOLCHAIN=auto`):
 
@@ -191,18 +191,35 @@ export GOPEDIA_API_URL=http://127.0.0.1:18787   # default; optional
 
 `--detail` and `--fields` require `--json`. `--fields` overrides `--detail` when both are given.
 
+**Restore** (PostgreSQL snapshot):
+
+```bash
+./gopedia restore --l1-id <l1_uuid>             # restore full content (markdown)
+./gopedia restore --l2-id <l2_uuid>             # restore one L2 section (markdown)
+./gopedia restore --l2-id <l2_uuid> --json      # full JSON response
+```
+
+Exactly one of `--l1-id` or `--l2-id` is required.
+
 **Search detail presets** (`?detail=` / `--detail`):
 
 | Preset | Fields returned |
 |--------|----------------|
 | `full` (default) | all fields including `surrounding_context` |
-| `standard` | `doc_id`, `project_id`, `l1_id`, `l2_id`, `l3_id`, `score`, `title`, `section_heading`, `snippet`, `source_path`, `breadcrumb` |
-| `summary` | `doc_id`, `l3_id`, `score`, `title`, `snippet`, `source_path` |
+| `standard` | `doc_id`, `project_id`, `doc_name`, `l1_id`, `l2_id`, `l3_id`, `score`, `title`, `section_heading`, `snippet`, `source_path`, `breadcrumb` |
+| `summary` | `doc_id`, `doc_name`, `l3_id`, `score`, `title`, `snippet`, `source_path` |
 
 **Filter by project** (HTTP API):
 
 ```bash
 curl -s "http://127.0.0.1:18787/api/search?q=Introduction&project_id=123&format=json"
+```
+
+**Restore via HTTP API:**
+
+```bash
+curl -s "http://127.0.0.1:18787/api/restore?l1_id=<l1_uuid>"
+curl -s "http://127.0.0.1:18787/api/restore?l2_id=<l2_uuid>&format=json"
 ```
 
 **Run local API server:**
@@ -291,6 +308,7 @@ docker compose -f docker-compose.dev.yml --env-file .env down -v
 | `docker compose` not found | Install Compose v2 plugin or `docker-compose` standalone ([install.md](install.md)). |
 | Pull / auth errors on macOS | `credsStore` / missing `docker-credential-desktop` ([install.md](install.md)). |
 | API 502 / ingest errors | `OPENAI_API_KEY`, DB connectivity, and `DBInitializer` completed successfully. |
+| `GET /api/search` works but `GET /api/restore` returns 404 | The running `./gopedia` binary is likely stale (built before restore route updates). Rebuild and restart: `GOTOOLCHAIN=auto go build -o gopedia ./cmd/gopedia` then `./gopedia server --addr 0.0.0.0:18787`. |
 | Wrong network in scripts | `DOCKER_NETWORK_EXTERNAL=gopedia-dev` matches [`docker-compose.dev.yml`](../../docker-compose.dev.yml) `networks.gopedia-dev.name`. `run_ingestion_docker.sh` ignores this — use `run_fresh_ingestion_docker.sh` instead. |
 | Port already allocated | Change `*_PUBLISH_*` variables in `.env`. |
 | `gopedia server` on wrong port | Default is 8787, not 18787. Set `--addr` or `GOPEDIA_HTTP_ADDR`. |

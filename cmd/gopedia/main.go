@@ -122,6 +122,72 @@ func main() {
 	searchCmd.Flags().String("detail", "", "With --json: search detail preset (summary|standard|full); omit for full")
 	searchCmd.Flags().String("fields", "", "With --json: comma-separated result keys (overrides --detail)")
 
+	restoreCmd := &cobra.Command{
+		Use:   "restore",
+		Short: "Restore content via GET /api/restore",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			base := apiBase()
+			useJSON, _ := cmd.Flags().GetBool("json")
+			l1ID, _ := cmd.Flags().GetString("l1-id")
+			l2ID, _ := cmd.Flags().GetString("l2-id")
+			l1ID = strings.TrimSpace(l1ID)
+			l2ID = strings.TrimSpace(l2ID)
+			if (l1ID == "" && l2ID == "") || (l1ID != "" && l2ID != "") {
+				return fmt.Errorf("exactly one of --l1-id or --l2-id is required")
+			}
+
+			q := url.Values{}
+			if useJSON {
+				q.Set("format", "json")
+			}
+			if l1ID != "" {
+				q.Set("l1_id", l1ID)
+			}
+			if l2ID != "" {
+				q.Set("l2_id", l2ID)
+			}
+			u := base + "/api/restore?" + q.Encode()
+
+			client := &http.Client{Timeout: 6 * time.Minute}
+			resp, err := client.Get(u)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("api %s: %s", resp.Status, string(body))
+			}
+			if useJSON {
+				var v any
+				if err := json.Unmarshal(body, &v); err != nil {
+					return fmt.Errorf("decode response: %w", err)
+				}
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetEscapeHTML(false)
+				return enc.Encode(v)
+			}
+			var out api.RestoreResponse
+			if err := json.Unmarshal(body, &out); err != nil {
+				return fmt.Errorf("decode response: %w", err)
+			}
+			if out.Stderr != "" {
+				fmt.Fprint(os.Stderr, out.Stderr)
+			}
+			if out.Error != "" {
+				return fmt.Errorf("restore error: %s", out.Error)
+			}
+			fmt.Println(out.Markdown)
+			return nil
+		},
+	}
+	restoreCmd.Flags().String("l1-id", "", "knowledge_l1.id UUID (restore full L1 content)")
+	restoreCmd.Flags().String("l2-id", "", "knowledge_l2.id UUID (restore code section)")
+	restoreCmd.Flags().Bool("json", false, "Print full JSON response (GET /api/restore?format=json)")
+
 	ingestCmd := &cobra.Command{
 		Use:   "ingest PATH",
 		Short: "Ingest markdown path via POST /api/ingest",
@@ -190,7 +256,7 @@ func main() {
 	}
 	projectCmd.AddCommand(projectInit)
 
-	root.AddCommand(serverCmd, serviceCmd, searchCmd, ingestCmd, projectCmd)
+	root.AddCommand(serverCmd, serviceCmd, searchCmd, restoreCmd, ingestCmd, projectCmd)
 
 	if err := root.Execute(); err != nil {
 		slog.Error("gopedia", "err", err)

@@ -66,6 +66,12 @@ func Register(s *fuego.Server, py *runner.Runner) {
 	api := fuego.Group(s, "/api")
 
 	fuego.Get(api, "/health", func(c fuego.ContextNoBody) (HealthResponse, error) {
+		reqID := newRequestID(c)
+		started := time.Now()
+		slog.Info("api request", "event", "api.health.request", "request_id", reqID, "method", "GET", "path", "/api/health")
+		defer func() {
+			slog.Info("api request", "event", "api.health.success", "request_id", reqID, "method", "GET", "path", "/api/health", "status", 200, "latency_ms", time.Since(started).Milliseconds())
+		}()
 		return HealthResponse{Status: "ok"}, nil
 	},
 		fuego.OptionSummary("Liveness check"),
@@ -73,6 +79,8 @@ func Register(s *fuego.Server, py *runner.Runner) {
 
 	fuego.Get(api, "/health/deps", func(c fuego.ContextNoBody) (HealthDepsResponse, error) {
 		reqID := newRequestID(c)
+		started := time.Now()
+		slog.Info("api request", "event", "api.health_deps.request", "request_id", reqID, "method", "GET", "path", "/api/health/deps")
 		deps := map[string]DepStatus{
 			"postgres": checkPostgres(),
 			"qdrant":   checkQdrant(),
@@ -86,6 +94,16 @@ func Register(s *fuego.Server, py *runner.Runner) {
 				break
 			}
 		}
+		slog.Info(
+			"api request",
+			"event", "api.health_deps.success",
+			"request_id", reqID,
+			"method", "GET",
+			"path", "/api/health/deps",
+			"status", 200,
+			"overall_status", overall,
+			"latency_ms", time.Since(started).Milliseconds(),
+		)
 		return HealthDepsResponse{Status: overall, Deps: deps, RequestID: reqID}, nil
 	},
 		fuego.OptionSummary("Dependency health (Postgres, Qdrant, TypeDB, Phloem gRPC)"),
@@ -93,21 +111,39 @@ func Register(s *fuego.Server, py *runner.Runner) {
 
 	fuego.Get(api, "/search", func(c fuego.ContextNoBody) (SearchResponse, error) {
 		reqID := newRequestID(c)
+		started := time.Now()
 		q := strings.TrimSpace(c.QueryParam("q"))
+		format := strings.ToLower(strings.TrimSpace(c.QueryParam("format")))
+		if format == "" {
+			format = "markdown"
+		}
+		detail := strings.TrimSpace(c.QueryParam("detail"))
+		fields := strings.TrimSpace(c.QueryParam("fields"))
+		projectID := strings.TrimSpace(c.QueryParam("project_id"))
+		slog.Info(
+			"api request",
+			"event", "api.search.request",
+			"request_id", reqID,
+			"method", "GET",
+			"path", "/api/search",
+			"format", format,
+			"query_len", len([]rune(q)),
+			"project_id", projectID,
+			"detail", detail,
+			"fields", fields,
+		)
 		if q == "" {
+			slog.Info("api request", "event", "api.search.bad_request", "request_id", reqID, "status", 400, "detail", "missing query parameter q")
 			return SearchResponse{}, fuego.BadRequestError{
 				Title:  "Bad Request",
 				Detail: "missing query parameter q",
 			}
 		}
-		format := strings.ToLower(strings.TrimSpace(c.QueryParam("format")))
-		if format == "" {
-			format = "markdown"
-		}
 		var resultKeys []string
 		if format == "json" {
-			keys, perr := parseSearchResultFields(c.QueryParam("detail"), c.QueryParam("fields"))
+			keys, perr := parseSearchResultFields(detail, fields)
 			if perr != nil {
+				slog.Info("api request", "event", "api.search.bad_request", "request_id", reqID, "status", 400, "detail", perr.Error())
 				return SearchResponse{}, fuego.BadRequestError{
 					Title:  "Bad Request",
 					Detail: perr.Error(),
@@ -122,8 +158,9 @@ func Register(s *fuego.Server, py *runner.Runner) {
 			outFmt = "json"
 		}
 		args := []string{"search", "--query", q, "--format", outFmt}
-		if pid := strings.TrimSpace(c.QueryParam("project_id")); pid != "" {
+		if pid := projectID; pid != "" {
 			if _, err := strconv.ParseInt(pid, 10, 64); err != nil {
+				slog.Info("api request", "event", "api.search.bad_request", "request_id", reqID, "status", 400, "detail", "invalid project_id")
 				return SearchResponse{}, fuego.BadRequestError{
 					Title:  "Bad Request",
 					Detail: "invalid project_id (expected integer)",
@@ -140,6 +177,7 @@ func Register(s *fuego.Server, py *runner.Runner) {
 			resp.Error = err.Error()
 			resp.Failure = newAPIError("PYTHON_SEARCH_FAILED", err.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
 			slog.Warn("search subprocess failed", "err", err, "stderr", resp.Stderr, "request_id", reqID)
+			slog.Info("api request", "event", "api.search.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
 			return resp, nil
 		}
 		if format == "json" {
@@ -148,6 +186,7 @@ func Register(s *fuego.Server, py *runner.Runner) {
 				resp.Error = uerr.Error()
 				resp.Failure = newAPIError("SEARCH_JSON_PARSE", uerr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
 				slog.Warn("search json parse failed", "err", uerr, "request_id", reqID)
+				slog.Info("api request", "event", "api.search.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
 				return resp, nil
 			}
 			hits := normalizeSearchHits(raw)
@@ -156,15 +195,113 @@ func Register(s *fuego.Server, py *runner.Runner) {
 				resp.Error = merr.Error()
 				resp.Failure = newAPIError("SEARCH_RESULT_ENCODE", merr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
 				slog.Warn("search results encode failed", "err", merr, "request_id", reqID)
+				slog.Info("api request", "event", "api.search.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
 				return resp, nil
 			}
 			resp.Results = encoded
+			slog.Info("api request", "event", "api.search.success", "request_id", reqID, "status", 200, "format", "json", "result_count", len(hits), "latency_ms", time.Since(started).Milliseconds())
 			return resp, nil
 		}
 		resp.Markdown = strings.TrimSpace(string(out))
+		slog.Info("api request", "event", "api.search.success", "request_id", reqID, "status", 200, "format", "markdown", "markdown_len", len([]rune(resp.Markdown)), "latency_ms", time.Since(started).Milliseconds())
 		return resp, nil
 	},
 		fuego.OptionSummary("Semantic search (markdown or format=json; optional detail/fields for JSON)"),
+		fuego.OptionQuery("q", "Search query text", fuego.ParamString(), fuego.ParamRequired()),
+		fuego.OptionQuery("format", "Response format: markdown (default) or json", fuego.ParamString()),
+		fuego.OptionQuery("detail", "JSON result preset: full, standard, summary (format=json only)", fuego.ParamString()),
+		fuego.OptionQuery("fields", "Comma-separated sparse result keys; overrides detail (format=json only)", fuego.ParamString()),
+		fuego.OptionQuery("project_id", "Optional project filter (integer)", fuego.ParamInteger()),
+	)
+
+	fuego.Get(api, "/restore", func(c fuego.ContextNoBody) (RestoreResponse, error) {
+		reqID := newRequestID(c)
+		started := time.Now()
+		l1ID := strings.TrimSpace(c.QueryParam("l1_id"))
+		l2ID := strings.TrimSpace(c.QueryParam("l2_id"))
+		format := strings.ToLower(strings.TrimSpace(c.QueryParam("format")))
+		if format == "" {
+			format = "markdown"
+		}
+		slog.Info(
+			"api request",
+			"event", "api.restore.request",
+			"request_id", reqID,
+			"method", "GET",
+			"path", "/api/restore",
+			"l1_id", l1ID,
+			"l2_id", l2ID,
+			"format", format,
+		)
+		if (l1ID == "" && l2ID == "") || (l1ID != "" && l2ID != "") {
+			slog.Info("api request", "event", "api.restore.bad_request", "request_id", reqID, "status", 400, "detail", "exactly one of l1_id or l2_id is required")
+			return RestoreResponse{}, fuego.BadRequestError{
+				Title:  "Bad Request",
+				Detail: "exactly one of l1_id or l2_id is required",
+			}
+		}
+		if format != "markdown" && format != "json" {
+			slog.Info("api request", "event", "api.restore.bad_request", "request_id", reqID, "status", 400, "detail", "invalid format")
+			return RestoreResponse{}, fuego.BadRequestError{
+				Title:  "Bad Request",
+				Detail: "invalid format (use markdown or json)",
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(c, 5*time.Minute)
+		defer cancel()
+
+		args := []string{"restore", "--format", format}
+		if l1ID != "" {
+			args = append(args, "--l1-id", l1ID)
+		}
+		if l2ID != "" {
+			args = append(args, "--l2-id", l2ID)
+		}
+
+		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.cli", args...)
+		resp := RestoreResponse{
+			Stderr:    string(stderr),
+			RequestID: reqID,
+		}
+		if err != nil {
+			resp.Error = err.Error()
+			resp.Failure = newAPIError("PYTHON_RESTORE_FAILED", err.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+			slog.Warn("restore subprocess failed", "err", err, "stderr", resp.Stderr, "request_id", reqID)
+			slog.Info("api request", "event", "api.restore.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
+			return resp, nil
+		}
+
+		if format == "json" {
+			var raw map[string]any
+			if uerr := json.Unmarshal(out, &raw); uerr != nil {
+				resp.Error = uerr.Error()
+				resp.Failure = newAPIError("RESTORE_JSON_PARSE", uerr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+				slog.Warn("restore json parse failed", "err", uerr, "request_id", reqID)
+				slog.Info("api request", "event", "api.restore.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
+				return resp, nil
+			}
+			encoded, merr := json.Marshal(raw)
+			if merr != nil {
+				resp.Error = merr.Error()
+				resp.Failure = newAPIError("RESTORE_RESULT_ENCODE", merr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+				slog.Warn("restore results encode failed", "err", merr, "request_id", reqID)
+				slog.Info("api request", "event", "api.restore.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
+				return resp, nil
+			}
+			resp.Result = encoded
+			slog.Info("api request", "event", "api.restore.success", "request_id", reqID, "status", 200, "format", "json", "result_keys", len(raw), "latency_ms", time.Since(started).Milliseconds())
+			return resp, nil
+		}
+
+		resp.Markdown = strings.TrimSpace(string(out))
+		slog.Info("api request", "event", "api.restore.success", "request_id", reqID, "status", 200, "format", "markdown", "markdown_len", len([]rune(resp.Markdown)), "latency_ms", time.Since(started).Milliseconds())
+		return resp, nil
+	},
+		fuego.OptionSummary("Restore content by l1_id or l2_id (markdown or format=json)"),
+		fuego.OptionQuery("l1_id", "knowledge_l1.id UUID (exactly one of l1_id/l2_id required)", fuego.ParamString()),
+		fuego.OptionQuery("l2_id", "knowledge_l2.id UUID (exactly one of l1_id/l2_id required)", fuego.ParamString()),
+		fuego.OptionQuery("format", "Response format: markdown (default) or json", fuego.ParamString()),
 	)
 
 	fuego.Post(api, "/ingest", func(c fuego.ContextWithBody[IngestRequest]) (IngestResponse, error) {
