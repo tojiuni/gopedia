@@ -168,6 +168,11 @@ func Register(s *fuego.Server, py *runner.Runner) {
 			}
 			args = append(args, "--project-id", pid)
 		}
+		if topK := strings.TrimSpace(c.QueryParam("top_k")); topK != "" {
+			if n, err := strconv.Atoi(topK); err == nil && n > 0 && n <= 100 {
+				args = append(args, "--limit", topK)
+			}
+		}
 		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.cli", args...)
 		resp := SearchResponse{
 			Stderr:    string(stderr),

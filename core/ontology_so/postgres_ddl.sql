@@ -153,3 +153,7 @@ COMMENT ON COLUMN knowledge_l3.source_metadata IS
 
 -- IMP-07: ingest audit — which gopedia version wrote this document row.
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS ingest_version TEXT NOT NULL DEFAULT '';
+
+-- Project-level Merkle hash: SHA-256 of sorted (machine_id || l2_child_hash) for all documents.
+-- Populated by FinalizeProject RPC after ingestion; compared at RegisterProject to detect no-op re-ingestion.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS content_hash BYTEA;

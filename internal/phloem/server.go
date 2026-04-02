@@ -1,7 +1,10 @@
 package phloem
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -113,5 +116,75 @@ func (s *Server) RegisterProject(ctx context.Context, req *pb.RegisterProjectReq
 			storedMID, req.GetMachineId(),
 		)
 	}
-	return &pb.RegisterProjectResponse{ProjectId: id, MachineId: storedMID}, nil
+
+	// Compare current DB hash with stored content_hash to detect no-op re-ingestion.
+	alreadyUpToDate := false
+	var storedHash []byte
+	_ = s.pg.QueryRow(ctx, `SELECT content_hash FROM projects WHERE id = $1`, id).Scan(&storedHash)
+	if len(storedHash) > 0 {
+		currentHash := s.computeProjectContentHash(ctx, id)
+		alreadyUpToDate = bytes.Equal(currentHash, storedHash)
+	}
+
+	return &pb.RegisterProjectResponse{ProjectId: id, MachineId: storedMID, AlreadyUpToDate: alreadyUpToDate}, nil
+}
+
+// FinalizeProject computes the project Merkle hash from current L1 records and persists it.
+// Call this after all files in a project have been ingested.
+func (s *Server) FinalizeProject(ctx context.Context, req *pb.FinalizeProjectRequest) (*pb.FinalizeProjectResponse, error) {
+	if s.pg == nil {
+		return nil, status.Error(codes.FailedPrecondition, "postgres not configured")
+	}
+	if req.GetProjectId() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "project_id is required")
+	}
+	hash := s.computeProjectContentHash(ctx, req.GetProjectId())
+	if len(hash) == 0 {
+		// No documents yet — nothing to store.
+		return &pb.FinalizeProjectResponse{Ok: true}, nil
+	}
+	_, err := s.pg.Exec(ctx,
+		`UPDATE projects SET content_hash = $1, modified_at = now() WHERE id = $2`,
+		hash, req.GetProjectId(),
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "finalize project: %v", err)
+	}
+	return &pb.FinalizeProjectResponse{Ok: true}, nil
+}
+
+// computeProjectContentHash returns SHA-256( sorted machine_id‖l2_child_hash ) for all
+// documents in the project that have a current L1 with a non-NULL l2_child_hash.
+func (s *Server) computeProjectContentHash(ctx context.Context, projectID int64) []byte {
+	rows, err := s.pg.Query(ctx, `
+		SELECT d.machine_id, k.l2_child_hash
+		  FROM documents d
+		  JOIN knowledge_l1 k ON k.id = d.current_l1_id
+		 WHERE d.project_id = $1
+		   AND k.l2_child_hash IS NOT NULL
+		 ORDER BY d.machine_id
+	`, projectID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	h := sha256.New()
+	buf := make([]byte, 8)
+	n := 0
+	for rows.Next() {
+		var machineID int64
+		var l2Hash []byte
+		if err := rows.Scan(&machineID, &l2Hash); err != nil {
+			continue
+		}
+		binary.BigEndian.PutUint64(buf, uint64(machineID))
+		h.Write(buf)
+		h.Write(l2Hash)
+		n++
+	}
+	if n == 0 {
+		return nil
+	}
+	return h.Sum(nil)
 }

@@ -43,10 +43,23 @@ message RegisterProjectRequest {
 message RegisterProjectResponse {
   int64 project_id = 1;
   int64 machine_id = 2;
+  // True when the project's content_hash matches the stored hash — client may skip ingestion.
+  bool already_up_to_date = 3;
+}
+
+// FinalizeProjectRequest is sent after all files in a project are ingested.
+// The server recomputes the Merkle hash from L1 records and stores it in projects.content_hash.
+message FinalizeProjectRequest {
+  int64 project_id = 1;
+}
+
+message FinalizeProjectResponse {
+  bool ok = 1;
 }
 
 // Phloem service: ingests markdown (and later other formats) into Rhizome.
 service Phloem {
   rpc IngestMarkdown(IngestRequest) returns (IngestResponse);
   rpc RegisterProject(RegisterProjectRequest) returns (RegisterProjectResponse);
+  rpc FinalizeProject(FinalizeProjectRequest) returns (FinalizeProjectResponse);
 }
