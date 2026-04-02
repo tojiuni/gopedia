@@ -24,6 +24,7 @@ sys.path.insert(0, str(repo_root))
 from property.root_props.markdown_loader import (
     call_phloem_ingest,
     collect_markdown_paths,
+    finalize_project,
     load_markdown,
     register_project,
 )
@@ -66,7 +67,7 @@ def main() -> None:
     project_root = path if path.is_dir() else path.parent
 
     with grpc.insecure_channel(addr) as channel:
-        project_id, project_machine_id = register_project(
+        project_id, project_machine_id, already_up_to_date = register_project(
             channel,
             str(project_root),
             name=project_root.name,
@@ -74,6 +75,10 @@ def main() -> None:
         )
         project_id_str = str(project_id) if project_id else ""
         project_mid_str = str(project_machine_id) if project_machine_id else ""
+
+        if already_up_to_date:
+            print(f"[skip] project already up to date (project_id={project_id})")
+            return
 
         # Single-file: keep existing behaviour (markdown or code)
         if path.is_file():
@@ -118,6 +123,12 @@ def main() -> None:
                 else:
                     print(f"  FAIL {file_path} doc_id={doc_id} machine_id={machine_id}", file=sys.stderr)
                     sys.exit(2)
+
+        # Store Merkle hash for next-run deduplication.
+        if project_id:
+            ok = finalize_project(channel, project_id)
+            if ok:
+                print(f"[finalize] project content_hash stored (project_id={project_id})")
 
 
 if __name__ == "__main__":

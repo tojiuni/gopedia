@@ -59,10 +59,12 @@ def register_project(
     name: str = "",
     metadata: dict[str, str] | None = None,
     machine_id: int = 0,
-) -> tuple[int | None, int | None]:
+) -> tuple[int | None, int | None, bool]:
     """
     Upsert a projects row by root_path via Phloem.
-    Returns (project_id, project_machine_id); (None, None) if the call fails.
+    Returns (project_id, project_machine_id, already_up_to_date).
+    already_up_to_date=True means content_hash matched — caller may skip ingestion.
+    Returns (None, None, False) if the call fails.
     """
     stub = rhizome_pb2_grpc.PhloemStub(channel)
     req = rhizome_pb2.RegisterProjectRequest(
@@ -74,13 +76,30 @@ def register_project(
     try:
         resp = stub.RegisterProject(req)
         if resp.project_id:
-            return int(resp.project_id), int(resp.machine_id)
+            return int(resp.project_id), int(resp.machine_id), bool(resp.already_up_to_date)
     except grpc.RpcError as e:
         print(
             f"RegisterProject failed (ingest continues; use GOPEDIA_PROJECT_ID if needed): {e}",
             file=sys.stderr,
         )
-    return None, None
+    return None, None, False
+
+
+def finalize_project(channel: grpc.Channel, project_id: int) -> bool:
+    """
+    Call FinalizeProject after all files in a project are ingested.
+    The server computes SHA-256(sorted machine_id‖l2_child_hash) from L1 records
+    and stores it in projects.content_hash for next-run deduplication.
+    Returns True on success.
+    """
+    stub = rhizome_pb2_grpc.PhloemStub(channel)
+    req = rhizome_pb2.FinalizeProjectRequest(project_id=project_id)
+    try:
+        resp = stub.FinalizeProject(req)
+        return bool(resp.ok)
+    except grpc.RpcError as e:
+        print(f"FinalizeProject failed (hash not stored): {e}", file=sys.stderr)
+        return False
 
 
 def call_phloem_ingest(
