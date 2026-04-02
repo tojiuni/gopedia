@@ -173,6 +173,12 @@ func Register(s *fuego.Server, py *runner.Runner) {
 				args = append(args, "--limit", topK)
 			}
 		}
+		if strings.ToLower(strings.TrimSpace(c.QueryParam("reranker"))) == "true" {
+			args = append(args, "--reranker")
+		}
+		if rm := strings.TrimSpace(c.QueryParam("reranker_model")); rm != "" {
+			args = append(args, "--reranker-model", rm)
+		}
 		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.cli", args...)
 		resp := SearchResponse{
 			Stderr:    string(stderr),

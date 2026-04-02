@@ -15,7 +15,7 @@ import (
 // Long-term: pair with AST/byte-offset parsing for zero-overlap, lossless structure and
 // normalized (non-spurious) whitespace for viewer restore.
 type ByFixedSizeChunker struct {
-	MaxChars int // max characters per chunk; 0 = default 500
+	MaxChars int // max characters per chunk; 0 = default 1000
 }
 
 // Chunks ignores roots and splits content by semantic boundaries under MaxChars.
@@ -24,7 +24,7 @@ type ByFixedSizeChunker struct {
 func (c ByFixedSizeChunker) Chunks(content string, roots []types.TOCNode) ([]types.Chunk, error) {
 	max := c.MaxChars
 	if max <= 0 {
-		max = 500
+		max = 1000
 	}
 	rs := []rune(strings.TrimSpace(content))
 	if len(rs) == 0 {

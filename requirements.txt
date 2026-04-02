@@ -10,6 +10,7 @@ qdrant-client>=1.17.0
 openai>=1.12
 tiktoken>=0.7.0
 pytest>=7.0
+sentence-transformers>=3.0.0
 # NLP L3 sentence worker: pip install -r python/nlp_worker/requirements.txt
 tree-sitter>=0.23.0
 tree-sitter-python>=0.23.0

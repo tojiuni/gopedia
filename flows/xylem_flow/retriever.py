@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 CONTEXT_FOR_L3_SQL = """
 SELECT
@@ -35,6 +35,42 @@ WHERE l3.l2_id = %s::uuid
   AND l3.sort_order BETWEEN %s AND %s
 ORDER BY l3.sort_order ASC
 """
+
+L3_BATCH_CONTENT_SQL = """
+SELECT id::text, content
+FROM knowledge_l3
+WHERE id = ANY(%s::uuid[])
+"""
+
+_cross_encoder_cache: Dict[str, Any] = {}
+
+
+def _get_cross_encoder(model_name: str) -> Any:
+    if model_name not in _cross_encoder_cache:
+        from sentence_transformers import CrossEncoder
+        _cross_encoder_cache[model_name] = CrossEncoder(model_name)
+    return _cross_encoder_cache[model_name]
+
+
+def rerank_candidates(
+    query: str,
+    rows: List[Tuple[Any, str]],
+    conn: Any,
+    model_name: str = "BAAI/bge-reranker-v2-m3",
+) -> List[Tuple[Any, str]]:
+    """Fetch L3 content and rerank using cross-encoder. Returns reranked rows."""
+    if not rows:
+        return rows
+    l3_ids = [lid for _, lid in rows]
+    with conn.cursor() as cur:
+        cur.execute(L3_BATCH_CONTENT_SQL, (l3_ids,))
+        content_rows = cur.fetchall()
+    content_map: Dict[str, str] = {r[0]: (r[1] or "") for r in content_rows}
+    model = _get_cross_encoder(model_name)
+    pairs = [(query, content_map.get(lid, "")) for _, lid in rows]
+    scores = model.predict(pairs)
+    ranked = sorted(zip(scores, rows), key=lambda x: float(x[0]), reverse=True)
+    return [r for _, r in ranked]
 
 def embed_query_openai(query: str, model: Optional[str] = None) -> List[float]:
     from openai import OpenAI
@@ -274,6 +310,8 @@ def retrieve_and_enrich(
     limit: Optional[int] = None,
     project_id: Optional[int] = None,
     embedding_model: Optional[str] = None,
+    use_reranker: bool = False,
+    reranker_model: Optional[str] = None,
 ) -> List[dict]:
     """If ``limit`` is passed (legacy), it overrides ``final_limit``."""
     from flows.xylem_flow.project_config import (
@@ -317,6 +355,12 @@ def retrieve_and_enrich(
         if not lid:
             continue
         rows.append((h, str(lid)))
+
+    if use_reranker and rows:
+        _rmodel = reranker_model or os.environ.get(
+            "GOPEDIA_RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"
+        )
+        rows = rerank_candidates(query, rows, conn, model_name=_rmodel)
 
     rows = rows[:final_limit]
 
