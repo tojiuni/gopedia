@@ -342,14 +342,19 @@ func Register(s *fuego.Server, py *runner.Runner) {
 
 // Run creates a Fuego server on addr (e.g. "127.0.0.1:8787"), registers routes, and blocks until shutdown.
 func Run(addr string) error {
-	// Initialize Phloem gRPC Server in the background
-	grpcAddr := getEnv("GOPEDIA_PHLOEM_GRPC_ADDR", ":50051")
-	go startPhloemGRPC(grpcAddr)
-
 	py, err := runner.NewRunner()
 	if err != nil {
 		return err
 	}
+	if err := py.ValidatePython(); err != nil {
+		slog.Warn("python environment check failed — ingest/search subprocesses may not work", "err", err)
+	} else {
+		slog.Info("python environment ok", "binary", py.Python)
+	}
+
+	// Initialize Phloem gRPC Server in the background using the same Runner.
+	grpcAddr := getEnv("GOPEDIA_PHLOEM_GRPC_ADDR", ":50051")
+	go startPhloemGRPC(grpcAddr, py)
 	// Fuego defaults Read/WriteTimeout to 30s; ingest/search subprocesses can run much longer.
 	const httpLongTimeout = 40 * time.Minute
 	s := fuego.NewServer(
@@ -365,7 +370,7 @@ func Run(addr string) error {
 	return s.Run()
 }
 
-func startPhloemGRPC(grpcAddr string) {
+func startPhloemGRPC(grpcAddr string, py *runner.Runner) {
 	ctx := context.Background()
 
 	// PostgreSQL (optional)
@@ -442,12 +447,10 @@ func startPhloemGRPC(grpcAddr string) {
 		idGen,
 	))
 	// Code domain pipeline (Python/Go via tree-sitter).
-	repoRoot := getEnv("GOPEDIA_REPO_ROOT", ".")
-	pythonBin := getEnv("GOPEDIA_PYTHON", "python3")
 	codeParser := &toc.CodeTOCParser{
 		Lang:      "python",
-		RepoRoot:  repoRoot,
-		PythonBin: pythonBin,
+		RepoRoot:  py.RepoRoot,
+		PythonBin: py.Python,
 	}
 	phloem.Register(domain.Code, domain.NewCodePipeline(
 		codeParser,
@@ -455,7 +458,7 @@ func startPhloemGRPC(grpcAddr string) {
 		defaultSink,
 		idGen,
 	))
-	slog.Info("code pipeline registered", "repo_root", repoRoot, "python", pythonBin)
+	slog.Info("code pipeline registered", "repo_root", py.RepoRoot, "python", py.Python)
 	server := phloem.NewServer(pgPool)
 
 	lis, err := net.Listen("tcp", grpcAddr)
