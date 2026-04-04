@@ -88,7 +88,7 @@ For detailed architecture diagrams, pipeline specifications, and database schema
 
 - 복사-붙여넣기 가능한 설치 명령어 (Helm 또는 kubectl)
 - 로컬 빠른 설치는 아래 가이드의 Compose 명령을 그대로 사용
-- 상세: [`doc/guide/install-guide.md`](./doc/guide/install-guide.md)
+- 상세: [`doc/guide/install.md`](./doc/guide/install.md)
 - 요약: [`doc/guide/quick-install-guide.md`](./doc/guide/quick-install-guide.md)
 
 설치 확인 방법 ("이 화면이 뜨면 성공")

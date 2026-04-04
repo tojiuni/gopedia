@@ -46,4 +46,4 @@ docker compose -f docker-compose.dev.yml --env-file .env down -v
 - Agent 연동 필요: `gopedia_mcp` 설치
 - 전체 연동: Gopedia -> Gardener -> MCP 순서 권장
 
-상세 가이드는 [install-guide.md](./install-guide.md)를 참고하세요.
+상세 가이드는 [install.md](./install.md)를 참고하세요.
