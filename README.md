@@ -76,6 +76,38 @@ We are currently transitioning into the **Rev2 (Growth & Fruition)** phase.
 
 For detailed architecture diagrams, pipeline specifications, and database schemas, please refer to the **[Rev2 Design Documentation](./doc/design/Rev2/01-overview.md)**.
 
+## 설치/시나리오 가이드 (Korean)
+
+사전 요구 사항 : 설치에 필요한 최소 환경 (K8s 버전, CPU/Memory, 필수 도구 등)
+
+- K8s `v1.28+` 또는 Docker Compose 개발 환경
+- 최소 `4 vCPU / 8GB RAM` (3개 조합 권장 `8 vCPU / 16GB RAM`)
+- 필수 도구: `git`, `docker`, `docker compose`, (선택) `go`, `python`, `node`
+
+설치 (5분 이내)
+
+- 복사-붙여넣기 가능한 설치 명령어 (Helm 또는 kubectl)
+- 로컬 빠른 설치는 아래 가이드의 Compose 명령을 그대로 사용
+- 상세: [`doc/guide/install-guide.md`](./doc/guide/install-guide.md)
+- 요약: [`doc/guide/quick-install-guide.md`](./doc/guide/quick-install-guide.md)
+
+설치 확인 방법 ("이 화면이 뜨면 성공")
+
+- `curl http://127.0.0.1:18787/api/health` 응답 JSON이 확인되면 성공
+- `GET /api/search?q=test` 호출 시 결과가 반환되면 정상
+
+삭제 방법
+
+- `docker compose -f docker-compose.dev.yml --env-file .env down -v`
+
+첫 번째 시나리오 (10분 이내)
+
+- 설치 직후 바로 실행할 수 있는 데모 시나리오 1개
+- Obsidian Vault에 샘플 노트를 만들고 ingest 후 검색 API 결과 확인
+- 이후 `gardener_gopedia`로 품질 측정, `gopedia_mcp`로 Agent 질의 재현
+
+다음 단계 안내 : 프로덕션 적용을 원하시면 [contact@cloudbro.ai](mailto:contact@cloudbro.ai)로 문의 - 컨택 채널은 꼭 cloudbro로 부탁드립니다!
+
 ---
 
 ## 📝 License
