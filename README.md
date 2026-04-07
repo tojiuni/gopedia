@@ -86,7 +86,7 @@ For detailed architecture diagrams, pipeline specifications, and database schema
 
 설치 (5분 이내)
 
-- 복사-붙여넣기 가능한 설치 명령어 (Helm 또는 kubectl)
+- 복사-붙여넣기 가능한 설치 명령어 (현재 가이드는 Docker Compose 기준)
 - 로컬 빠른 설치는 아래 가이드의 Compose 명령을 그대로 사용
 - 상세: [`doc/guide/install.md`](./doc/guide/install.md)
 - 요약: [`doc/guide/quick-install-guide.md`](./doc/guide/quick-install-guide.md)
@@ -104,7 +104,7 @@ For detailed architecture diagrams, pipeline specifications, and database schema
 
 - 설치 직후 바로 실행할 수 있는 데모 시나리오 1개
 - Obsidian Vault에 샘플 노트를 만들고 ingest 후 검색 API 결과 확인
-- 이후 `gardener_gopedia`로 품질 측정, `gopedia_mcp`로 Agent 질의 재현
+- 이후 [gardener_gopedia](https://github.com/tojiuni/gardener_gopedia/blob/main/README.md)로 품질 측정, [gopedia_mcp](https://github.com/tojiuni/gopedia_mcp/blob/main/README.md)로 Agent 질의 재현
 
 다음 단계 안내 : 프로덕션 적용을 원하시면 [contact@cloudbro.ai](mailto:contact@cloudbro.ai)로 문의 - 컨택 채널은 꼭 cloudbro로 부탁드립니다!
 

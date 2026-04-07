@@ -12,10 +12,11 @@
 ## 설치 (복사-붙여넣기)
 
 ```bash
-cd /neunexus/gopedia
+cd /path/to/gopedia
 cp .env.local.example .env
-sed -i 's/^OPENAI_API_KEY=.*/OPENAI_API_KEY=YOUR_OPENAI_KEY/' .env
-sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=gopedia123!/' .env
+# Edit .env and set:
+# OPENAI_API_KEY=YOUR_OPENAI_KEY
+# POSTGRES_PASSWORD=gopedia123!
 docker compose -f docker-compose.dev.yml --env-file .env --profile app up -d --build
 ```
 
@@ -30,7 +31,7 @@ curl -s http://127.0.0.1:18787/api/health
 ## 삭제
 
 ```bash
-cd /neunexus/gopedia
+cd /path/to/gopedia
 docker compose -f docker-compose.dev.yml --env-file .env down -v
 ```
 
@@ -42,8 +43,8 @@ docker compose -f docker-compose.dev.yml --env-file .env down -v
 
 ## 3개 조합 확장
 
-- 품질 테스트 필요: `gardener_gopedia` 설치
-- Agent 연동 필요: `gopedia_mcp` 설치
+- 품질 테스트 필요: [gardener_gopedia](https://github.com/tojiuni/gardener_gopedia/blob/main/README.md) 설치
+- Agent 연동 필요: [gopedia_mcp](https://github.com/tojiuni/gopedia_mcp/blob/main/README.md) 설치
 - 전체 연동: Gopedia -> Gardener -> MCP 순서 권장
 
 상세 가이드는 [install.md](./install.md)를 참고하세요.

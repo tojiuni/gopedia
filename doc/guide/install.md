@@ -193,10 +193,11 @@ cd /path/to/gopedia && GOTOOLCHAIN=auto go build -o /tmp/gopedia ./cmd/gopedia &
 ### 설치 (5분 이내)
 
 ```bash
-cd /neunexus/gopedia
+cd /path/to/gopedia
 cp .env.local.example .env
-sed -i 's/^OPENAI_API_KEY=.*/OPENAI_API_KEY=YOUR_OPENAI_KEY/' .env
-sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=gopedia123!/' .env
+# Edit .env and set:
+# OPENAI_API_KEY=YOUR_OPENAI_KEY
+# POSTGRES_PASSWORD=gopedia123!
 docker compose -f docker-compose.dev.yml --env-file .env --profile app up -d --build
 ```
 
@@ -214,7 +215,7 @@ curl -s http://127.0.0.1:18787/api/health
 ### 삭제 방법
 
 ```bash
-cd /neunexus/gopedia
+cd /path/to/gopedia
 docker compose -f docker-compose.dev.yml --env-file .env down -v
 ```
 
@@ -228,13 +229,13 @@ docker compose -f docker-compose.dev.yml --env-file .env down -v
 #### B. Gopedia + Gardener (품질 테스트 운영)
 
 1. Gopedia 기동 완료 확인
-2. `/neunexus/gardener_gopedia/doc/guide/install-guide.md` 수행
+2. `../gardener_gopedia/doc/guide/install-guide.md` 수행
 3. Gardener에서 `GARDENER_GOPEDIA_BASE_URL=http://127.0.0.1:18787`로 연결
 
 #### C. Gopedia + MCP (Agent 연동)
 
 1. Gopedia 기동 완료 확인
-2. `/neunexus/gopedia_mcp/doc/guide/install-guide.md` 수행
+2. `../gopedia_mcp/doc/guide/install-guide.md` 수행
 3. MCP 클라이언트(Cursor/Claude/Gemini)에서 `gopedia_search` 호출 확인
 
 #### D. Full Stack (Gopedia + Gardener + MCP)
