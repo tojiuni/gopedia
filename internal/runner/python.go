@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"gopedia/internal/platform/env"
 )
 
 const envRepoRoot = "GOPEDIA_REPO_ROOT"
@@ -109,9 +111,9 @@ func (r *Runner) RunModule(ctx context.Context, module string, args ...string) (
 	}
 	cmd := exec.CommandContext(ctx, r.Python, append([]string{"-m", module}, args...)...)
 	cmd.Dir = r.RepoRoot
-	env := os.Environ()
-	env = append(env, "PYTHONPATH="+r.RepoRoot)
-	cmd.Env = env
+	merged := env.AppendSubprocessHostOverrides(os.Environ())
+	merged = append(merged, "PYTHONPATH="+r.RepoRoot)
+	cmd.Env = merged
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

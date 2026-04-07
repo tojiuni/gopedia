@@ -8,7 +8,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
-ENV/
+# Only ignore a venv folder named ENV at repo root (not internal/platform/env).
+/ENV/
 
 # Go
 bin/
@@ -18,7 +19,8 @@ doc/openapi.json
 # Docker
 .dockerignore
 /phloem
-gopedia
+# Built CLI binary at repo root only (not cmd/gopedia/).
+/gopedia
 # OS
 .DS_Store
 Thumbs.db
