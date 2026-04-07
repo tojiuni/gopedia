@@ -8,7 +8,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
-ENV/
+# Only ignore a venv folder named ENV at repo root (not internal/platform/env).
+/ENV/
 
 # Go
 bin/
