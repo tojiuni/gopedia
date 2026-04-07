@@ -76,6 +76,12 @@ nDCG@10, P@3 메트릭 측정. 현재 메트릭은 기준치 충족 (T14 SKIPPED
 - 관련 파일: `flows/xylem_flow/retriever.py::retrieve_and_enrich()`
 - 파라미터: `candidate_limit`, `final_limit`, `neighbor_window`, `context_level`
 
+### 4. Cross-Encoder 로딩/실행 구조 최적화
+- 현재: 검색 요청마다 Python subprocess가 새로 실행되어 `flows/xylem_flow/retriever.py`의 `_get_cross_encoder()` 호출 시 무거운 Cross-Encoder 모델을 반복 로드
+- 문제: 모델 디스크 로딩/초기화 비용이 누적되어 검색 레이턴시 오버헤드 발생
+- 후보: 모델을 메모리에 상주시켜 재사용하는 별도 서비스(gRPC 등)로 분리
+- 기대 효과: warm process 기반 재사용으로 리랭킹 지연 감소 및 처리량 안정화
+
 **진단 방법**
 
 - Gardener eval 파이프라인으로 Recall@5 < 0.5 이면 개선 필요
