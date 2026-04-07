@@ -16,6 +16,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"gopedia/internal/api"
+	"gopedia/internal/platform/env"
+	"gopedia/internal/platform/logging"
 )
 
 func apiBase() string {
@@ -27,7 +29,8 @@ func apiBase() string {
 }
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	env.LoadDotenv()
+	slog.SetDefault(logging.NewDefaultSlog())
 
 	root := &cobra.Command{
 		Use:   "gopedia",

@@ -10,11 +10,12 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"gopedia/internal/platform/env"
 )
 
 func checkPostgres() DepStatus {
 	t0 := time.Now()
-	cs := pgConnString()
+	cs := env.PostgresConnString()
 	if cs != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -35,7 +36,7 @@ func checkPostgres() DepStatus {
 
 func checkQdrant() DepStatus {
 	t0 := time.Now()
-	host := getEnv("QDRANT_HOST", "")
+	host := env.DialQdrantHost()
 	if host != "" {
 		port := 6334
 		if p, err := strconv.Atoi(getEnv("QDRANT_GRPC_PORT", getEnv("QDRANT_PORT", "6334"))); err == nil {
@@ -65,7 +66,10 @@ func checkQdrant() DepStatus {
 
 func checkTypeDB() DepStatus {
 	t0 := time.Now()
-	host := getEnv("TYPEDB_HOST", "127.0.0.1")
+	host := env.DialTypeDBHost()
+	if host == "" {
+		host = "127.0.0.1"
+	}
 	port := getEnv("TYPEDB_PORT", "1729")
 	return checkTCP(t0, host, port, "tcp")
 }

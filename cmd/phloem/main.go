@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/qdrant/go-client/qdrant"
@@ -23,9 +24,11 @@ import (
 	"gopedia/internal/phloem/embedder"
 	"gopedia/internal/phloem/sink"
 	"gopedia/internal/phloem/toc"
+	"gopedia/internal/platform/env"
 )
 
 func main() {
+	env.LoadDotenv()
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	grpcAddr := getEnv("GOPEDIA_PHLOEM_GRPC_ADDR", ":50051")
@@ -33,7 +36,7 @@ func main() {
 
 	// PostgreSQL (optional)
 	var pgPool *pgxpool.Pool
-	pgConn := pgConnString()
+	pgConn := env.PostgresConnString()
 	if pgConn != "" {
 		pool, err := pgxpool.New(ctx, pgConn)
 		if err != nil {
@@ -47,13 +50,14 @@ func main() {
 
 	// Qdrant (optional)
 	var qdrantClient *qdrant.Client
-	if getEnv("QDRANT_HOST", "") != "" {
+	if strings.TrimSpace(os.Getenv("QDRANT_HOST")) != "" {
+		qHost := env.DialQdrantHost()
 		port := 6334
 		if p, err := strconv.Atoi(getEnv("QDRANT_GRPC_PORT", getEnv("QDRANT_PORT", "6334"))); err == nil {
 			port = p
 		}
 		client, err := qdrant.NewClient(&qdrant.Config{
-			Host: getEnv("QDRANT_HOST", "localhost"),
+			Host: qHost,
 			Port: port,
 		})
 		if err != nil {
@@ -129,22 +133,6 @@ func main() {
 		slog.Error("serve failed", "err", err)
 		os.Exit(1)
 	}
-}
-
-func pgConnString() string {
-	host := getEnv("POSTGRES_HOST", "")
-	if host == "" {
-		return ""
-	}
-	port := getEnv("POSTGRES_PORT", "5432")
-	user := getEnv("POSTGRES_USER", "")
-	pass := getEnv("POSTGRES_PASSWORD", "")
-	db := getEnv("POSTGRES_DB", "gopedia")
-	sslmode := getEnv("POSTGRES_SSLMODE", "disable")
-	if user == "" {
-		return ""
-	}
-	return "postgres://" + user + ":" + pass + "@" + host + ":" + port + "/" + db + "?sslmode=" + sslmode
 }
 
 func getEnv(key, def string) string {

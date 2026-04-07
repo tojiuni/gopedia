@@ -27,6 +27,8 @@ import (
 	"gopedia/internal/phloem/embedder"
 	"gopedia/internal/phloem/sink"
 	"gopedia/internal/phloem/toc"
+	"gopedia/internal/platform/env"
+	"gopedia/internal/platform/logging"
 	"gopedia/internal/runner"
 )
 
@@ -223,6 +225,9 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		fuego.OptionQuery("detail", "JSON result preset: full, standard, summary (format=json only)", fuego.ParamString()),
 		fuego.OptionQuery("fields", "Comma-separated sparse result keys; overrides detail (format=json only)", fuego.ParamString()),
 		fuego.OptionQuery("project_id", "Optional project filter (integer)", fuego.ParamInteger()),
+		fuego.OptionQuery("top_k", "Max hits (1-100); passed as --limit to search CLI", fuego.ParamString()),
+		fuego.OptionQuery("reranker", "Set to true to enable reranker", fuego.ParamString()),
+		fuego.OptionQuery("reranker_model", "Reranker model name when reranker is enabled", fuego.ParamString()),
 	)
 
 	fuego.Get(api, "/restore", func(c fuego.ContextNoBody) (RestoreResponse, error) {
@@ -317,6 +322,8 @@ func Register(s *fuego.Server, py *runner.Runner) {
 
 	fuego.Post(api, "/ingest", func(c fuego.ContextWithBody[IngestRequest]) (IngestResponse, error) {
 		reqID := newRequestID(c)
+		started := time.Now()
+		log := logging.Default()
 		body, err := c.Body()
 		if err != nil {
 			return IngestResponse{OK: false, Error: err.Error(), Failure: newAPIError("BAD_BODY", err.Error(), false, reqID, nil), RequestID: reqID}, nil
@@ -340,9 +347,23 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		if err != nil {
 			resp.Error = err.Error()
 			resp.Failure = newAPIError("PYTHON_INGEST_FAILED", err.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
-			slog.Warn("ingest subprocess failed", "err", err, "stderr", resp.Stderr, "request_id", reqID)
+			log.LogIngest(logging.IngestLog{
+				RequestID:  reqID,
+				SourcePath: path,
+				DurationMs: time.Since(started).Milliseconds(),
+				Stdout:     resp.Stdout,
+				Stderr:     resp.Stderr,
+				Err:        err,
+			})
 			return resp, nil
 		}
+		log.LogIngest(logging.IngestLog{
+			RequestID:  reqID,
+			SourcePath: path,
+			DurationMs: time.Since(started).Milliseconds(),
+			Stdout:     resp.Stdout,
+			Stderr:     resp.Stderr,
+		})
 		return resp, nil
 	},
 		fuego.OptionSummary("Ingest markdown path via Root → Phloem"),
@@ -363,9 +384,34 @@ func Run(addr string) error {
 		slog.Info("python environment ok", "binary", py.Python)
 	}
 
+	// PostgreSQL: when configured (POSTGRES_USER set), require a working pool before serving.
+	// Fail fast so Phloem RegisterProject / Rhizome sink are not left without PG.
+	var pgPool *pgxpool.Pool
+	pgConn := env.PostgresConnString()
+	if rawHost := strings.TrimSpace(os.Getenv("POSTGRES_HOST")); pgConn != "" && rawHost != "" && env.PostgresDialHost() != rawHost {
+		slog.Info("postgres: POSTGRES_HOST is a Docker-only DNS name; using dial host on the machine (published DB port)", "POSTGRES_HOST", rawHost, "dial_host", env.PostgresDialHost())
+	}
+	if pgConn != "" {
+		pool, err := pgxpool.New(context.Background(), pgConn)
+		if err != nil {
+			slog.Error("postgres connection failed — fix POSTGRES_* or start Postgres", "err", err)
+			os.Exit(1)
+		}
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = pool.Ping(pingCtx)
+		pingCancel()
+		if err != nil {
+			pool.Close()
+			slog.Error("postgres ping failed — fix POSTGRES_* or start Postgres", "err", err)
+			os.Exit(1)
+		}
+		pgPool = pool
+		slog.Info("postgres connected")
+	}
+
 	// Initialize Phloem gRPC Server in the background using the same Runner.
 	grpcAddr := getEnv("GOPEDIA_PHLOEM_GRPC_ADDR", ":50051")
-	go startPhloemGRPC(grpcAddr, py)
+	go startPhloemGRPC(grpcAddr, py, pgPool)
 	// Fuego defaults Read/WriteTimeout to 30s; ingest/search subprocesses can run much longer.
 	const httpLongTimeout = 40 * time.Minute
 	s := fuego.NewServer(
@@ -381,36 +427,31 @@ func Run(addr string) error {
 	return s.Run()
 }
 
-func startPhloemGRPC(grpcAddr string, py *runner.Runner) {
+func startPhloemGRPC(grpcAddr string, py *runner.Runner, pgPool *pgxpool.Pool) {
 	ctx := context.Background()
 
-	// PostgreSQL (optional)
-	var pgPool *pgxpool.Pool
-	pgConn := pgConnString()
-	if pgConn != "" {
-		pool, err := pgxpool.New(ctx, pgConn)
-		if err != nil {
-			slog.Warn("postgres connect failed, continuing without PG", "err", err)
-		} else {
-			defer pool.Close()
-			pgPool = pool
-			slog.Info("postgres connected")
-		}
+	if pgPool != nil {
+		defer pgPool.Close()
 	}
 
-	// Qdrant (optional)
+	// Qdrant (optional) — failure is a warning; search/vectors degrade without it.
 	var qdrantClient *qdrant.Client
-	if getEnv("QDRANT_HOST", "") != "" {
+	rawQdrant := strings.TrimSpace(os.Getenv("QDRANT_HOST"))
+	if rawQdrant != "" {
+		qHost := env.DialQdrantHost()
+		if qHost != rawQdrant && strings.TrimSpace(os.Getenv("GOPEDIA_QDRANT_HOST")) == "" {
+			slog.Info("qdrant: compose hostname not resolvable on host; using published port", "QDRANT_HOST", rawQdrant, "dial_host", qHost)
+		}
 		port := 6334
 		if p, err := strconv.Atoi(getEnv("QDRANT_GRPC_PORT", getEnv("QDRANT_PORT", "6334"))); err == nil {
 			port = p
 		}
 		client, err := qdrant.NewClient(&qdrant.Config{
-			Host: getEnv("QDRANT_HOST", "localhost"),
+			Host: qHost,
 			Port: port,
 		})
 		if err != nil {
-			slog.Warn("qdrant connect failed, continuing without Qdrant", "err", err)
+			slog.Warn("qdrant not available — semantic search/embeddings may be limited", "err", err)
 		} else {
 			qdrantClient = client
 			slog.Info("qdrant connected")
@@ -429,9 +470,27 @@ func startPhloemGRPC(grpcAddr string, py *runner.Runner) {
 	if qdrantClient != nil {
 		collection := getEnv("QDRANT_COLLECTION", "gopedia_markdown")
 		if err := ontologyso.EnsureQdrantCollection(ctx, qdrantClient, collection, uint64(emb.VectorSize())); err != nil {
-			slog.Warn("qdrant ensure collection failed", "err", err)
+			slog.Warn("qdrant collection not ready — semantic search may fail until Qdrant is fixed", "collection", collection, "err", err)
 		} else {
 			slog.Info("qdrant collection ready", "collection", collection, "vector_size", emb.VectorSize())
+		}
+	}
+
+	// TypeDB (optional) — HTTP stack does not embed a driver; TCP reachability only when configured.
+	rawTypeDB := strings.TrimSpace(os.Getenv("TYPEDB_HOST"))
+	if rawTypeDB != "" {
+		th := env.DialTypeDBHost()
+		if th != rawTypeDB && strings.TrimSpace(os.Getenv("GOPEDIA_TYPEDB_HOST")) == "" {
+			slog.Info("typedb: compose hostname not resolvable on host; using published port", "TYPEDB_HOST", rawTypeDB, "dial_host", th)
+		}
+		tdPort := getEnv("TYPEDB_PORT", "1729")
+		tdAddr := net.JoinHostPort(th, tdPort)
+		conn, err := net.DialTimeout("tcp", tdAddr, 5*time.Second)
+		if err != nil {
+			slog.Warn("typedb not reachable — graph sync features may be unavailable", "addr", tdAddr, "err", err)
+		} else {
+			_ = conn.Close()
+			slog.Info("typedb tcp ok", "addr", tdAddr)
 		}
 	}
 
@@ -488,22 +547,6 @@ func startPhloemGRPC(grpcAddr string, py *runner.Runner) {
 		slog.Error("serve failed", "err", err)
 		os.Exit(1)
 	}
-}
-
-func pgConnString() string {
-	host := getEnv("POSTGRES_HOST", "")
-	if host == "" {
-		return ""
-	}
-	port := getEnv("POSTGRES_PORT", "5432")
-	user := getEnv("POSTGRES_USER", "")
-	pass := getEnv("POSTGRES_PASSWORD", "")
-	db := getEnv("POSTGRES_DB", "gopedia")
-	sslmode := getEnv("POSTGRES_SSLMODE", "disable")
-	if user == "" {
-		return ""
-	}
-	return "postgres://" + user + ":" + pass + "@" + host + ":" + port + "/" + db + "?sslmode=" + sslmode
 }
 
 func getEnv(key, def string) string {

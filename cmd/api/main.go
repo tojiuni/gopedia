@@ -6,10 +6,13 @@ import (
 	"os"
 
 	"gopedia/internal/api"
+	"gopedia/internal/platform/env"
+	"gopedia/internal/platform/logging"
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	env.LoadDotenv()
+	slog.SetDefault(logging.NewDefaultSlog())
 
 	addr := os.Getenv("GOPEDIA_HTTP_ADDR")
 	if addr == "" {

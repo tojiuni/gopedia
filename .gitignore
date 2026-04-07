@@ -19,7 +19,8 @@ doc/openapi.json
 # Docker
 .dockerignore
 /phloem
-gopedia
+# Built CLI binary at repo root only (not cmd/gopedia/).
+/gopedia
 # OS
 .DS_Store
 Thumbs.db
