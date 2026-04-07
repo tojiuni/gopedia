@@ -4,12 +4,27 @@
 
 ## 사전 요구 사항 (최소)
 
-- `docker` + `docker compose`
 - `git`
 - `OPENAI_API_KEY`
 - 권장 리소스: `4 vCPU / 8GB RAM` (3개 조합은 `8 vCPU / 16GB RAM`)
+- **방법 A (빠른 실행)**: `go` 1.24+ 권장. 설치된 버전이 낮으면 `GOTOOLCHAIN=auto`로 `go.mod`에 맞는 툴체인을 자동으로 씁니다.
+- **방법 B (Docker Compose)**: `docker` + `docker compose`
 
 ## 설치 (복사-붙여넣기)
+
+### 방법 A — 빠른 실행 (`GOTOOLCHAIN` 빌드 + 로컬 서버)
+
+PostgreSQL·API 키 등은 `.env`에 맞춰 두어야 합니다. 값 설명은 [install.md](./install.md)를 참고하세요.
+
+```bash
+cd /path/to/gopedia
+cp .env.local.example .env
+# Edit .env: OPENAI_API_KEY, POSTGRES_* 등
+GOTOOLCHAIN=auto go build -o gopedia ./cmd/gopedia
+./gopedia server --addr 0.0.0.0:18787
+```
+
+### 방법 B — Docker Compose로 한 번에
 
 ```bash
 cd /path/to/gopedia
@@ -29,6 +44,8 @@ curl -s http://127.0.0.1:18787/api/health
 - health JSON이 오면 성공
 
 ## 삭제
+
+방법 B(Docker Compose)로 올린 스택만 해당합니다.
 
 ```bash
 cd /path/to/gopedia
