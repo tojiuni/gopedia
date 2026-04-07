@@ -2,6 +2,7 @@
 
 > 평가 기준: Gardener eval 파이프라인 IR 메트릭 (Recall@5, MRR@10, nDCG@10)  
 > 원칙: 한 번에 하나만 변경 → 재평가 → 반복
+> Rev4 확장안: [`03-atomic-l3-metadata-strategy.md`](./03-atomic-l3-metadata-strategy.md)
 
 ---
 
@@ -100,8 +101,10 @@ GFM 테이블 전체가 1개의 L2 청크로 저장된다.
 임베딩 벡터의 표현력이 낮아 semantic search hit률이 저하된다.
 
 **개선 방향**  
-- 최소 토큰 임계값 설정 (예: 20 tokens 이하 청크는 부모 청크에 병합)
-- 또는 짧은 청크에 헤딩 breadcrumb를 prefix로 추가하여 컨텍스트 보강
+- 저장 단계에서는 L3를 원자적으로 유지 (자동 병합 최소화)
+- 벡터화 시 `breadcrumb/fact_tags/domain_tags`를 prefix로 결합해 의미 보강
+- 검색 단계에서 `block_group_id`, `prev/next` 기반으로 context를 동적으로 확장
+- 즉, "저장 시 병합"보다 "조회 시 메타 기반 결합"을 우선 적용
 
 ---
 
@@ -128,7 +131,7 @@ GFM 테이블 전체가 1개의 L2 청크로 저장된다.
 | ★★☆ | I-2. 청크 경계 절단 | 긴 문서 검색 품질 개선 | 중 |
 | ★★☆ | II-2. 테이블 행 단위 L3 | 테이블 내용 검색 가능 | 하 |
 | ★☆☆ | II-1. 중첩 목록 미처리 | 목록 heavy 문서 개선 | 하 |
-| ★☆☆ | III-1. 짧은 청크 병합 | 임베딩 품질 소폭 개선 | 하 |
+| ★☆☆ | III-1. 짧은 청크 메타 보강 | 임베딩 품질 소폭 개선 | 하 |
 | ★☆☆ | I-4. BySymbolChunker 미구현 | 코드 symbol 검색 정밀도 | 고 |
 | ★☆☆ | III-2. 임베딩 모델 단일화 | 운영 안정성 | 하 |
 
