@@ -17,8 +17,9 @@ func TestExpandStructuredOrderedList(t *testing.T) {
 	}
 	var ctr blockCounters
 	out := expandStructuredBlocks(parent, &ctr)
-	if len(out) != 3 {
-		t.Fatalf("want 3 chunks (heading + 2 ordered), got %d: %#v", len(out), out)
+	// Consecutive ordered items are now grouped into a single chunk.
+	if len(out) != 2 {
+		t.Fatalf("want 2 chunks (heading + 1 grouped ordered), got %d: %#v", len(out), out)
 	}
 	if out[0].SectionID != "s0" || out[0].SectionType != types.SectionTypeHeading {
 		t.Fatalf("chunk0: %#v", out[0])
@@ -29,8 +30,8 @@ func TestExpandStructuredOrderedList(t *testing.T) {
 	if out[1].SectionID != "o1" || out[1].ParentSectionID != "s0" || out[1].SectionType != types.SectionTypeOrdered {
 		t.Fatalf("chunk1: %#v", out[1])
 	}
-	if out[2].SectionID != "o2" || out[2].ParentSectionID != "s0" {
-		t.Fatalf("chunk2: %#v", out[2])
+	if !strings.Contains(out[1].Text, "First item") || !strings.Contains(out[1].Text, "Second item") {
+		t.Fatalf("grouped chunk should contain all items, got %q", out[1].Text)
 	}
 }
 

@@ -8,6 +8,9 @@ Phloem 인제스트 파이프라인의 핵심 단계인 **청킹(Chunking)**은 
 도메인(Markdown / Code / 기타)에 따라 서로 다른 전략을 적용하며,
 공통 인터페이스(`Chunker`)를 통해 파이프라인과 결합된다.
 
+> Rev4 확장 전략(원자적 L3 유지 + metadata-aware retrieval/restore)은
+> [`03-atomic-l3-metadata-strategy.md`](./03-atomic-l3-metadata-strategy.md)를 참고한다.
+
 ```go
 // internal/phloem/chunker/chunker.go
 type Chunker interface {
@@ -173,3 +176,14 @@ knowledge_l3 (원자 단위 — 임베딩 대상)
   ├── parent_id        코드 도메인: 부모 L3 라인 ID
   └── source_metadata  {"is_anchor": true/false} (코드 도메인)
 ```
+
+### Rev4 확장 메타데이터 (권장)
+
+atomic L3 전략에서는 저장 시 병합을 최소화하고, 아래 메타로 검색/복원을 보강한다.
+
+- 구조: `block_type`, `block_group_id`, `list_level`, `list_item_no`
+- 위치: `chunk_index`, `char_start`, `char_end`
+- 연결: `prev_l3_id`, `next_l3_id`
+- 힌트: `section_heading`, `breadcrumb`, `fact_tags`, `domain_tags`
+
+상세 설계와 운영 가드레일은 `03-atomic-l3-metadata-strategy.md`에 정리되어 있다.

@@ -233,12 +233,10 @@ func expandStructuredBlocks(parent types.Chunk, ctr *blockCounters) []types.Chun
 			continue
 		}
 
-		if m := reOrderedItem.FindStringSubmatch(line); m != nil {
-			ctr.ordered++
-			sid := "o" + itoa(ctr.ordered)
-			var itemLines []string
-			itemLines = append(itemLines, line)
-			i++
+		if reOrderedItem.FindStringSubmatch(line) != nil {
+			// Collect all consecutive ordered list items (and their continuation lines)
+			// into a single chunk so procedural sequences can be retrieved as a unit.
+			var allLines []string
 			for i < len(lines) {
 				nl := lines[i]
 				nt := strings.TrimSpace(nl)
@@ -248,37 +246,37 @@ func expandStructuredBlocks(parent types.Chunk, ctr *blockCounters) []types.Chun
 				if mdHeadingRe.MatchString(nt) {
 					break
 				}
-				if reOrderedItem.MatchString(nl) {
-					break
-				}
 				if strings.HasPrefix(nt, "```") {
 					break
 				}
-				if reMdImageLine.MatchString(nt) && len(nt) == len(strings.TrimSpace(nl)) {
+				if reMdImageLine.MatchString(nt) {
 					break
 				}
 				if strings.Contains(nl, "|") && i+1 < len(lines) && isTableSeparatorRow(lines[i+1]) {
 					break
 				}
-				itemLines = append(itemLines, nl)
+				allLines = append(allLines, nl)
 				i++
 			}
-			itemText := strings.TrimSpace(strings.Join(itemLines, "\n"))
-			meta := map[string]any{
-				"block_type":        types.SectionTypeOrdered,
-				"parent_section_id": parent.SectionID,
-				"list_index":        m[1],
+			if len(allLines) > 0 {
+				ctr.ordered++
+				sid := "o" + itoa(ctr.ordered)
+				itemText := strings.TrimSpace(strings.Join(allLines, "\n"))
+				meta := map[string]any{
+					"block_type":        types.SectionTypeOrdered,
+					"parent_section_id": parent.SectionID,
+				}
+				derived = append(derived, types.Chunk{
+					SectionID:       sid,
+					Path:            parent.Path + " > " + sid,
+					Text:            itemText,
+					Level:           types.LevelL2,
+					Version:         1,
+					ParentSectionID: parent.SectionID,
+					SectionType:     types.SectionTypeOrdered,
+					SourceMetadata:  meta,
+				})
 			}
-			derived = append(derived, types.Chunk{
-				SectionID:       sid,
-				Path:            parent.Path + " > " + sid,
-				Text:            itemText,
-				Level:           types.LevelL2,
-				Version:         1,
-				ParentSectionID: parent.SectionID,
-				SectionType:     types.SectionTypeOrdered,
-				SourceMetadata:  meta,
-			})
 			continue
 		}
 

@@ -74,6 +74,8 @@ def cmd_search(args: argparse.Namespace) -> int:
                 final_limit=args.limit,
                 neighbor_window=args.neighbor_window,
                 context_level=args.context_level,
+                use_reranker=getattr(args, "reranker", False),
+                reranker_model=getattr(args, "reranker_model", None),
             )
             if getattr(args, "project_id", None) is not None:
                 kw["project_id"] = int(args.project_id)
@@ -191,6 +193,17 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=None,
         help="Load Qdrant/PG settings from projects.source_metadata and filter Qdrant by project_id",
+    )
+    p_search.add_argument(
+        "--reranker",
+        action="store_true",
+        help="Enable cross-encoder reranking between Qdrant candidates and final cutoff",
+    )
+    p_search.add_argument(
+        "--reranker-model",
+        default=None,
+        dest="reranker_model",
+        help="Cross-encoder model name (default: BAAI/bge-reranker-v2-m3 or GOPEDIA_RERANKER_MODEL env)",
     )
     p_search.set_defaults(func=cmd_search)
 
