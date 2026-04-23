@@ -97,11 +97,28 @@ curl -s "$GARDENER/compare?baseline=$BASE&candidate=$CAND&metric=Recall@5" | jq 
 
 ## Version별 IR 지표 현황 (요약)
 
-리포트 파일에서 인용한 **aggregate** 지표(소수 둘째자리로 반올림). **데이터셋이 다르면 같은 축에 직접 대입하지 말 것.**
+리포트 파일에서 인용한 **aggregate** IR 지표(소수 **둘째 자리** 반올림; v0.1.0은 IR 집계 없음). **데이터셋·쿼리 수·qrel이 다르면(특히 osteon 30q vs universitas 44q) 셀 값을 동일 “개선/악화” 축으로 직접 맞대지 말 것.**
 
-### 비교 축: `universitas_factual_v1` (44q) — 추세
+### 전 리포트 통합 표 (Gardener `aggregate` 기준, 가능한 항목)
 
-`neunexus-gopedia` v0.2.x ~ `universitas-factual` v0.6.x 계열(동일 44q 정의)에서 **Recall@5**·**MRR@10** 흐름. (v0.1.0은 IR aggregate 없이 [수동 쿼리·score](v0.1.0_2026-04-01_neunexus-gopedia.md)만 기록.)
+| 리포트 / 라벨 | 날짜 | 데이터셋 (N) | Recall@5 | MRR@10 | nDCG@10 | P@3 | 링크 |
+|---------------|------|--------------|----------|--------|---------|-----|------|
+| v0.1.0 | 2026-04-01 | — (IR 집계 없음) | — | — | — | — | [v0.1.0](v0.1.0_2026-04-01_neunexus-gopedia.md) (수동 쿼리·score) |
+| v0.2.0 | 2026-04-01 | Gardener IR (리포트 §4) | 0.79 | 0.39 | 0.49 | 0.21 | [v0.2.0](v0.2.0_2026-04-01_neunexus-gopedia.md) |
+| v0.3.0 | 2026-04-01 | Gardener IR (리포트 §4) | 0.64 | 0.56 | 0.58 | 0.21 | [v0.3.0](v0.3.0_2026-04-01_neunexus-gopedia.md) |
+| v0.4.0-dev | 2026-04-01 | Gardener IR (리포트 §4) | 0.50 | 0.32 | 0.37 | 0.14 | [v0.4.0](v0.4.0_2026-04-01_neunexus-gopedia.md) |
+| v0.5.0 (final) | 2026-04-02 | `universitas_factual_v1` (44q) | 0.50 | 0.28 | 0.34 | 0.14 | [v0.5.0](v0.5.0_2026-04-02_universitas-factual.md) |
+| v0.5.1 | 2026-04-02 | `universitas_factual_v1` (44q) | 0.61 | 0.37 | 0.45 | 0.17 | [v0.5.1](v0.5.1_2026-04-02_universitas-factual.md) |
+| v0.6.0 reingest | 2026-04-02 | `universitas_factual_v1` (44q) | 0.50 | 0.36 | 0.40 | 0.17 | [v0.6.0 04-02](v0.6.0-reingest_2026-04-02_universitas-factual.md) |
+| v0.6.0 reingest | 2026-04-03 | `universitas_factual_v1` (44q) | 0.48 | 0.37 | 0.40 | 0.16 | [v0.6.0 04-03](v0.6.0-reingest_2026-04-03_universitas-factual.md) |
+| **mcp-2.1.0 (stack)** | 2026-04-08 | **Gardener `osteon` preset (30q)** | **1.00** | **0.95** | **0.96** | **0.33** | [mcp-2.1.0](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md) |
+
+- **mcp-2.1.0** 행: `summary/quality_score` = **1.0** (리포트 §2-2), `ragas/context_relevance` = **0.9** (§2-1). **44q 행과 점수·추세를 직접 맞대지 말 것** (30q, 큐레이션·코퍼스가 다름 — 아래 주석 §).
+- v0.2~v0.4는 리포트마다 `dataset_id`·인덱스가 다를 수 있으나, **수치**는 기존 README 차트·각 파일 aggregate와 맞췄다.
+
+### 44q 추세 차트 (universitas_factual_v1 + 이전 Gardener run 일치 구간) — mcp **미포함**
+
+`neunexus-gopedia` v0.2.x ~ `universitas-factual` v0.6.x에서 **R@5 / MRR / nDCG** 3 `line` (v0.1.0·**mcp-2.1.0은 데이터 축이 달라 미포함**; 전체는 위 **통합 표**). v0.1.0은 IR aggregate 없이 [수동 쿼리·score](v0.1.0_2026-04-01_neunexus-gopedia.md)만 기록.
 
 ```mermaid
 xychart-beta
@@ -120,19 +137,11 @@ xychart-beta
 | **nDCG@10** | 0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40 | 동일 |
 
 > **P@3** (동일 44q): 0.21, 0.21, 0.14, 0.14, 0.17, 0.17, 0.16 — **차트 생략**(척도는 같으나 `xychart`에 네 번째 `line`을 쓰면 Mermaid 뷰어에 따라 겹쳐 보일 수 있음).  
-> **v0.5.0 x축**: [v0.5.0 리포트](v0.5.0_2026-04-02_universitas-factual.md) run 열이 여럿이므로, 위 `v0.5.0` 열은 **v0.4.0 대비 final** 집계(Recall 0.50, MRR 0.278, …)다. Mermaid `xychart`는 `line` 색 구분이 환경마다 달라 **수치는 위 표**를 기준으로 한다.
+> **v0.5.0 x축**: [v0.5.0 리포트](v0.5.0_2026-04-02_universitas-factual.md) run 열이 여럿이므로, 위 `v0.5.0` 열은 **v0.4.0 대비 final** 집계(Recall 0.50, MRR 0.278, …)다. Mermaid `xychart`는 `line` 색 구분이 환경마다 달라 **수치는 위 통합 표**를 기준으로 한다.
 
-### 별도 축: `mcp-2.1.0` (osteon 30q) — 동일 y축에 합치지 말 것
+### 데이터 축 구분 (44q vs osteon 30q)
 
-Gardener `quality_preset: "osteon"` (내장 `sample_osteon_guide_30` 계열). [리포트 §2-1~2-2](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md) 지표:
-
-| 지표 | 값 | 비고 |
-|------|-----|------|
-| Recall@5 | **1.00** | 30/30 |
-| MRR@10 | **0.95** | — |
-| nDCG@10 | **0.96** | — |
-| P@3 | 0.33 | 만점 아님 |
-| `summary/quality_score` | 1.0 | Gardener KPI |
+아래 **flowchart**는 `mcp-2.1.0`([§2-1~2-2](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md) 수치)이 **universitas 44q**와 **같은 y축·개선/악화로 읽으면 안 된다**는 힌트다. **지표 수치**는 맨 위 **통합 표**에 한 줄로 포함돼 있다.
 
 ```mermaid
 flowchart TB
