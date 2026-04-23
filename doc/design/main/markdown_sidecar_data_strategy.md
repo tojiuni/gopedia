@@ -64,6 +64,8 @@
 - `hw-spec-v3.schema.jsonld` (semantic)
 - 선택: `hw-spec-v3.profile.json` (품질/분포/신선도)
 
+ID는 `.gopedia` config의 `project_machine_id`를 루트로 생성하여, 모든 sidecar 파일과 DB 레코드가 동일한 `dataset_id` 계열을 공유하도록 합니다.
+
 -----
 
 ## 4. Ingest & Embedding 전략
@@ -85,9 +87,14 @@
 ### C. Hybrid Retrieval
 
 1. 질문 분해(Query Decomposition)
-2. Factual 조건(수치/범위)은 SQL/Parquet pre-filter
-3. Semantic 조건(관계/의미)은 JSON-LD/Graph pre-filter
-4. 최종적으로 벡터 검색 + 재정렬(rerank) 결합
+2. Semantic 조건(관계/의미)은 JSON-LD/Graph pre-filter (항상 실행)
+3. Factual 조건(수치/범위)은 SQL/Parquet pre-filter
+4. 최종적으로 벡터 검색 + metadata-aware 재정렬(rerank) 결합
+
+### D. Ontology 운영 책임
+
+- JSON-LD `@context`, `@type` 규칙 변경 책임자는 `admin_id`입니다.
+- 온톨로지 변경 시에는 버전(`ontology_version`)을 갱신하고, 하위 dataset 매핑 테이블을 함께 업데이트합니다.
 
 -----
 
@@ -99,5 +106,7 @@
 2. `{dataset_id}.parquet` - 사실 데이터(SoT)
 3. `{dataset_id}.schema.jsonld` - 의미/관계/타입
 4. `{dataset_id}.profile.json` - row 수, null 비율, 갱신 시각
+
+LLM에 컨텍스트를 전달할 때는 Parquet/CSV 원본을 그대로 넣지 않고, 필요한 row만 선별해 compact 텍스트 또는 JSONL로 변환해 전달합니다.
 
 이 표준을 사용하면 마크다운은 가볍게 유지하면서도, RAG는 정형 데이터의 의미와 수치를 모두 안정적으로 활용할 수 있습니다.
