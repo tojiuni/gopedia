@@ -128,7 +128,7 @@ Gopedia does not just "chunk" data; it categorizes it into a meaningful hierarch
 
 ### RAG quality: IR metrics by report version (snapshot)
 
-Gardener aggregate metrics (**Recall@5**, **MRR@10**, **nDCG@10**) across saved evaluation reports. The first seven points use the **`universitas_factual_v1` (44q)** definition; the last point **`mcp*`** is **[`mcp-2.1.0` osteon 30q](./doc/rag-test-reports/mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md)** — a different dataset, so do not read a rising line from `v0.6b` to `mcp*` as a product improvement. **Full tables, per-report links, P@3, and why osteon scores can look high** are documented in [`doc/rag-test-reports/README.md`](./doc/rag-test-reports/README.md) (start at *Version별 IR 지표 현황*).
+Gardener aggregate metrics (**Recall@5**, **MRR@10**, **nDCG@10**) across saved evaluation reports. The first seven points use the **`universitas_factual_v1` (44q)** definition; the last point **`mcp*`** is **[`mcp-2.1.0` osteon 30q](./doc/rag-test-reports/mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md)** — a different dataset, so do not read a rising line from `v0.6b` to `mcp*` as a product improvement. **Full tables, per-report links, P@3, and why osteon scores can look high** are documented in [`doc/rag-test-reports/README.md`](./doc/rag-test-reports/README.md) (see the [IR metrics snapshot](./doc/rag-test-reports/README.md#ir-metrics-snapshot) section).
 
 ```mermaid
 xychart-beta
@@ -175,37 +175,38 @@ We are currently transitioning into the **Rev2 (Growth & Fruition)** phase.
 | **Run + API** | [`doc/guide/run.md`](./doc/guide/run.md) |
 | **RAG test reports + IR version chart (full table & notes)** | [`doc/rag-test-reports/README.md#ir-metrics-snapshot`](./doc/rag-test-reports/README.md#ir-metrics-snapshot) |
 
-## 설치/시나리오 가이드 (Korean)
+## Installation & first scenario
 
-사전 요구 사항 : 설치에 필요한 최소 환경 (K8s 버전, CPU/Memory, 필수 도구 등)
+**Prerequisites** — minimum environment for install (Kubernetes version, CPU/RAM, tools):
 
-- K8s `v1.28+` 또는 Docker Compose 개발 환경
-- 최소 `4 vCPU / 8GB RAM` (3개 조합 권장 `8 vCPU / 16GB RAM`)
-- 필수 도구: `git`, `docker`, `docker compose`, (선택) `go`, `python`, `node`
+- Kubernetes `v1.28+` *or* a Docker Compose–based dev stack
+- At least `4 vCPU / 8 GB RAM` (for a three-node–style setup, `8 vCPU / 16 GB RAM` is recommended)
+- Required tools: `git`, `docker`, `docker compose`; optional: `go`, `python`, `node`
 
-설치 (5분 이내)
+**Install (under ~5 minutes)**
 
-- 복사-붙여넣기 가능한 설치 명령어 (현재 가이드는 Docker Compose 기준)
-- 로컬 빠른 설치는 아래 가이드의 Compose 명령을 그대로 사용
-- 상세: [`doc/guide/install.md`](./doc/guide/install.md)
-- 요약: [`doc/guide/quick-install-guide.md`](./doc/guide/quick-install-guide.md)
+- Copy-pasteable commands are documented for **Docker Compose** in the guides below.
+- For a quick local stack, follow the Compose commands in:
+  - Details: [`doc/guide/install.md`](./doc/guide/install.md)
+  - Short version: [`doc/guide/quick-install-guide.md`](./doc/guide/quick-install-guide.md)
 
-설치 확인 방법 ("이 화면이 뜨면 성공")
+**Verify it works**
 
-- `curl http://127.0.0.1:18787/api/health` 응답 JSON이 확인되면 성공
-- `GET /api/search?q=test` 호출 시 결과가 반환되면 정상
+- Success if `curl http://127.0.0.1:18787/api/health` returns JSON.
+- Success if `GET /api/search?q=test` returns results.
 
-삭제 방법
+**Tear down**
 
 - `docker compose -f docker-compose.dev.yml --env-file .env down -v`
 
-첫 번째 시나리오 (10분 이내)
+**First scenario (under ~10 minutes)**
 
-- 설치 직후 바로 실행할 수 있는 데모 시나리오 1개
-- Obsidian Vault에 샘플 노트를 만들고 ingest 후 검색 API 결과 확인
-- 이후 [gardener_gopedia](https://github.com/tojiuni/gardener_gopedia/blob/main/README.md)로 품질 측정, [gopedia_mcp](https://github.com/tojiuni/gopedia_mcp/blob/main/README.md)로 Agent 질의 재현
+- One demo path you can run right after install: create sample notes in an Obsidian vault, ingest them, then check the search API.
+- Next, run quality evaluation with [gardener_gopedia](https://github.com/tojiuni/gardener_gopedia/blob/main/README.md) and reproduce agent-style queries with [gopedia_mcp](https://github.com/tojiuni/gopedia_mcp/blob/main/README.md).
 
-다음 단계 안내 : 프로덕션 적용을 원하시면 [contact@cloudbro.ai](mailto:contact@cloudbro.ai)로 문의 - 컨택 채널은 꼭 cloudbro로 부탁드립니다!
+**Production inquiries:** [contact@cloudbro.ai](mailto:contact@cloudbro.ai) (Cloudbro channel).
+
+**Korean README:** [`README(kor).md`](./README(kor).md)
 
 ---
 
