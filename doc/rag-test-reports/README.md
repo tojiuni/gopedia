@@ -95,6 +95,8 @@ curl -s "$GARDENER/compare?baseline=$BASE&candidate=$CAND&metric=Recall@5" | jq 
 
 ---
 
+<a id="ir-metrics-snapshot"></a>
+
 ## Version별 IR 지표 현황 (요약)
 
 리포트에서 인용한 **aggregate** 지표(소수 **둘째 자리** 반올림, `mcp-2.1.0`의 nDCG는 **0.9631 → 0.96**). **마지막 점(`mcp-2.1.0*`)**만 Gardener **osteon 30q** — 앞 7점은 **`universitas_factual_v1` 44q**와 동일 정의(연속 추세로 읽을 수 있음). **7↔8 구간**은 서로 **다른 데이터셋**이므로 개선/악화로 해석하지 말 것. (v0.1.0은 [수동 쿼리](v0.1.0_2026-04-01_neunexus-gopedia.md)만 있음.)
