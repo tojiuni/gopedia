@@ -25,7 +25,81 @@ The "entry point" where nutrients (data) are absorbed. It registers entire Proje
 ### 2. Stem — *Scalable Pipelines*
 The transport system for data, divided into two vital flows:
 * **Phloem (Ingestion)**: **Root → Stem → Rhizome**. Encapsulates raw data, structures it hierarchically (Project → Document → L1/L2/L3), handles NLP tasks (Sentence Splitting, Entity masking), and records them into the Rhizome via **Smart Sinks**.
-* **Xylem (RAG)**: **Rhizome → Leaf/Fruit**. Retrieves L3 chunks via vector search and intelligently reconstructs their parent structural context (L2 sections, tables, code blocks) for rich prompt injection.
+* **Xylem (RAG)**: **Rhizome → Leaf/Fruit**. Retrieves L3 chunks via vector search, optional **cross-encoder rerank**, and reconstructs parent structural context (L2 sections, tables, code blocks) for rich prompt injection.
+
+> **Version note (pipelines)**: The diagrams below match the **current mainline code** and **[Rev4 design notes](./doc/design/Rev4/)** (chunking, atomic L3, retrieval policy). For a reproducible build identifier, run `git describe --tags` (pre-release id looks like `v0.1.0-…-g<hash>`). **Authoritative, maintained diagrams and gap lists** live in **[Phloem (ingest)](./doc/design/phloem/README.md)** and **[Xylem (RAG)](./doc/design/xylem/README.md)**; deeper stage-by-stage text is in [`doc/design/phloem/pipeline.md`](./doc/design/phloem/pipeline.md) and [`doc/design/xylem/pipeline.md`](./doc/design/xylem/pipeline.md).
+
+**Phloem (Ingestion)** — gRPC `IngestMarkdown` → domain pipeline (`wiki` / `code`) → `DefaultSink` → PostgreSQL, Qdrant, optional Redis (Tuber).
+
+```mermaid
+flowchart TB
+  subgraph clients [Clients]
+    Root[Root / property.root_props]
+  end
+  subgraph grpc [Phloem gRPC]
+    S[Server.IngestMarkdown]
+    R[Registry by domain]
+    S --> R
+  end
+  subgraph pipelines [Pipelines]
+    W[WikiPipeline]
+    C[CodePipeline]
+    R --> W
+    R --> C
+  end
+  W --> P1[TOC + heading chunker]
+  C --> P2[Code TOC + code chunker]
+  P1 --> Sink[DefaultSink.Write]
+  P2 --> Sink
+  subgraph rhizome [Rhizome]
+    PG[(PostgreSQL)]
+    QD[(Qdrant)]
+    RD[(Redis optional)]
+  end
+  Sink --> PG
+  Sink --> QD
+  Sink -.-> RD
+  Root -->|IngestRequest| S
+```
+
+**Xylem (RAG)** — `flows.xylem_flow` (CLI or `GET /api/search` via subprocess): query embedding → Qdrant L3 search → optional **rerank** → `fetch_rich_context` (PostgreSQL).
+
+```mermaid
+flowchart TB
+  subgraph entry [Entry]
+    HTTP[GET /api/search]
+    CLI[flows.xylem_flow.cli search]
+  end
+  subgraph xylem [retriever]
+    RE[retrieve_and_enrich]
+    PC[project_config]
+    EMB{embed backend}
+    EOpenAI[OpenAI query embed]
+    ELocal[local e5 query embed]
+    QD[qdrant L3 top-k]
+    RR{rerank?}
+    RER[CrossEncoder rerank]
+    FR[fetch_rich_context]
+  end
+  subgraph stores [Stores]
+    Qdr[(Qdrant)]
+    PG2[(PostgreSQL)]
+  end
+  HTTP --> CLI
+  CLI --> RE
+  RE --> PC
+  RE --> EMB
+  EMB -->|local| ELocal
+  EMB -->|openai| EOpenAI
+  ELocal --> QD
+  EOpenAI --> QD
+  QD --> Qdr
+  RE --> RR
+  RR -->|no| FR
+  RR -->|yes| RER
+  RER --> FR
+  FR --> PG2
+```
 
 ### 3. Rhizome — *Relational & Polyglot Storage*
 The "Knowledge Soil." This layer handles identity and relationship reasoning using **Polyglot Persistence**:
@@ -74,7 +148,15 @@ We are currently transitioning into the **Rev2 (Growth & Fruition)** phase.
 
 ## 📚 Documentation
 
-For detailed architecture diagrams, pipeline specifications, and database schemas, please refer to the **[Rev2 Design Documentation](./doc/design/Rev2/01-overview.md)**.
+| Topic | Link |
+| --- | --- |
+| **Phloem (ingestion) — diagram + gaps** | [`doc/design/phloem/README.md`](./doc/design/phloem/README.md) |
+| **Phloem — pipeline stages (code-aligned)** | [`doc/design/phloem/pipeline.md`](./doc/design/phloem/pipeline.md) |
+| **Xylem (RAG + rerank) — diagram + gaps** | [`doc/design/xylem/README.md`](./doc/design/xylem/README.md) |
+| **Xylem — pipeline stages (code-aligned)** | [`doc/design/xylem/pipeline.md`](./doc/design/xylem/pipeline.md) |
+| **Chunking / L3 / retrieval strategy (Rev4)** | [`doc/design/Rev4/`](./doc/design/Rev4/) |
+| **Rhizome overview (Rev2)** | [`doc/design/Rev2/01-overview.md`](./doc/design/Rev2/01-overview.md) |
+| **Run + API** | [`doc/guide/run.md`](./doc/guide/run.md) |
 
 ## 설치/시나리오 가이드 (Korean)
 
