@@ -1,3 +1,10 @@
+본 문서는 `markdown_strategy.md`의 계층/그래프 검색 파트를 상세화한 부속 문서입니다.
+공통 정책(계층 분리, ID, 링킹, 전달 정책)은 기준 문서를 우선 적용합니다.
+
+- 기준 문서: `markdown_strategy.md`
+- 프로세스 흐름: `markdown_process.md`
+- sidecar 상세: `markdown_sidecar_data_strategy.md`
+
 GraphDB를 활용하여 파일 시스템의 계층 구조(Hierarchy)를 RAG에 통합하는 것은 단순한 벡터 검색의 한계를 극복할 수 있는 매우 영리한 전략입니다. 특히 대규모 프로젝트나 정형/비정형 데이터가 섞여 있는 환경에서는 **"컨텍스트의 유실"**을 막는 핵심 열쇠가 됩니다.
 
 제안하신 폴더 구조(`Project > Category > File`)를 활용한 구체적인 임베딩 및 검색 전략을 제안합니다.
