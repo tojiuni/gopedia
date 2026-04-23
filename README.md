@@ -112,4 +112,4 @@ For detailed architecture diagrams, pipeline specifications, and database schema
 
 ## 📝 License
 
-This project is licensed under the **MIT License**.
+This project is licensed under the **Apache 2.0 License**.
