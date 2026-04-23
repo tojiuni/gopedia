@@ -22,30 +22,69 @@
 
 ---
 
-## 2. Ingest 전략
+## 2. Ingest/Chunking 전략 (목표 상태)
 
-### 2-1. Markdown 분할
+### 2-1. Chunking 계층 모델
 
-- 1차: 헤더 기준 분할 (`#`, `##`, `###`)
-- 2차: 재귀 분할 (`\n\n` -> `\n` -> ` `)
-- overlap: 10-20%
+Gopedia의 chunking은 **L2(섹션 단위) -> L3(검색 단위)** 2계층으로 고정합니다.
 
-### 2-2. Path-to-Context Injection (상시 적용)
+1. **L2 section chunk**
+   - Markdown TOC 기준으로 섹션을 비중첩(non-overlap) 분할
+   - 문서 첫 헤더 이전 텍스트는 `root` 섹션으로 보존
+2. **L3 retrieval chunk**
+   - L2 내부를 섹션 타입별 규칙으로 세분화
+   - 최종 검색/재정렬은 L3 기준으로 수행
 
-각 chunk 입력 앞에 canonical path를 주입합니다.
+### 2-2. 섹션 타입별 L3 분할 규칙
+
+- **Heading/Ordered text**
+  - 문장 분할 후 clause 단위(쉼표/세미콜론/파이프)로 추가 분해
+  - 긴 문장/복합 문장 질의 대응을 위해 semantic fragment 확장 적용
+- **Table**
+  - 헤더/구분선 이후 데이터 row를 1행 1청크로 분할
+  - 대형 테이블은 raw 전체 임베딩 금지, 핵심 row/컬럼 중심 인덱싱 적용
+- **Code**
+  - 코드 라인 기반 L3를 생성하고 부모-자식(parent_id) 구조를 유지
+  - anchor line 우선 임베딩으로 검색 노이즈를 줄임
+- **Image/기타**
+  - 설명 텍스트를 단일 또는 소수 L3로 유지
+
+### 2-3. Chunk 연결성과 순서
+
+- L3는 `sort_order`와 `parent_id`를 유지해 복원 가능성을 보장
+- 각 L2는 `title_id`(섹션 제목 L3) + 본문 L3 체인을 갖도록 정규화
+- 목표: 검색은 원자 단위로, 복원은 계층 단위로 수행
+
+### 2-4. Path-to-Context Injection (상시 적용)
+
+모든 임베딩 입력에 canonical path를 prepend합니다.
 
 - 예: `[Path: <project>/<category>/<file>#<h1>/<h2>]`
-- 장점: 계층 맥락 보존, 관계형 질의 recall 개선
-- 단점: 토큰 증가 가능
-- 운영 규칙: path는 축약된 canonical 형태만 사용하여 토큰 증가를 제한
+- 경로 주입은 recall을 높이되 토큰 증가를 막기 위해 축약 경로만 사용
+- `Frontmatter 운영 메타 + 섹션 path + section_type`를 최소 공통 컨텍스트로 사용
 
-### 2-3. Table ingest 규칙
+### 2-5. 구현/운영 가이드
 
-- 대형 테이블 raw 전체 임베딩 금지
-- 허용 방식:
-  - 핵심 컬럼/엔티티 중심 인덱싱
-  - Row/Column 요약 문장화(linearization)
-  - summary sidecar 생성 후 임베딩
+- 기본 정책: **L2 비중첩 + L3 미세 분할 + 검색 시 확장**
+- overlap은 ingest 단계에서 고정 주입하지 않고, retrieval의 neighbor/context 조립에서 동적으로 보완
+- chunk 단위 변경 시 `pipeline_version`과 함께 재인덱싱하여 품질 비교를 가능하게 유지
+
+### 2-6. Sidecar 데이터 Chunking 규칙
+
+Sidecar(`.schema.jsonld`, `.parquet`, `.csv`)도 markdown과 동일하게 **검색 가능한 chunk**로 변환합니다.
+
+- **JSON-LD (semantic chunk)**
+  - 기본 단위: `entity(@id)` 또는 `relation(triple)` 1개를 1청크로 생성
+  - 필수 메타: `dataset_id`, `entity_id`, `@type`, `path`, `ontology_version`, `admin_id`
+  - 대형 그래프는 커뮤니티/서브그래프 단위로 parent chunk를 추가 생성
+- **Parquet/CSV (factual chunk)**
+  - 기본 단위: 1 row 1청크, 대형 데이터셋은 핵심 컬럼 projection 후 row 요약 청크 생성
+  - 숫자 질의 대응을 위해 원본 값은 factual store에 유지하고, 임베딩에는 요약 텍스트를 사용
+  - 동일 스키마 데이터는 column-profile chunk(컬럼 의미/분포/단위)도 함께 생성
+- **Markdown-Sidecar 결합 키**
+  - `[[data-ref:<dataset_id>]]`를 기준으로 markdown chunk와 sidecar chunk를 연결
+  - 응답 1차 단계에는 sidecar의 `l3_id/l2_id/l1_id` 또는 `dataset_id/entity_id`만 우선 전달
+  - 추가 근거 요청 시에만 원본 row/엔티티 본문을 확장 조회
 
 ---
 
