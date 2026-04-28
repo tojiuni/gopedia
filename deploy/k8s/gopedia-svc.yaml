@@ -1,0 +1,173 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gopedia-svc
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gopedia-svc
+  namespace: gopedia-svc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gopedia-svc
+  namespace: gopedia-svc
+  labels:
+    app: gopedia-svc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gopedia-svc
+  template:
+    metadata:
+      labels:
+        app: gopedia-svc
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "gopedia-svc"
+        # Postgres password → /vault/secrets/postgres
+        vault.hashicorp.com/agent-inject-secret-postgres: "secret/data/neunexus/postgres"
+        vault.hashicorp.com/agent-inject-template-postgres: |
+          {{- with secret "secret/data/neunexus/postgres" -}}
+          export POSTGRES_PASSWORD="{{ index .Data.data "app-password" }}"
+          {{- end }}
+        # OpenAI placeholder key → /vault/secrets/openai
+        # 실제 사용 시 secret/neunexus/gopedia-svc 의 openai-api-key 값을 교체하세요.
+        vault.hashicorp.com/agent-inject-secret-openai: "secret/data/neunexus/gopedia-svc"
+        vault.hashicorp.com/agent-inject-template-openai: |
+          {{- with secret "secret/data/neunexus/gopedia-svc" -}}
+          export OPENAI_API_KEY="{{ index .Data.data "openai-api-key" }}"
+          {{- end }}
+    spec:
+      serviceAccountName: gopedia-svc
+      containers:
+        - name: gopedia-svc
+          image: artifacts.toji.homes/neunexus/gopedia-svc:latest
+          # shell wrapper: Vault 시크릿 파일을 source한 뒤 Go 바이너리를 exec
+          # (Go 바이너리는 /vault/secrets/env를 직접 읽지 않으므로 환경변수로 주입)
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -a
+              for f in /vault/secrets/postgres /vault/secrets/openai; do
+                [ -f "$f" ] && . "$f"
+              done
+              set +a
+              exec /usr/local/bin/api
+          ports:
+            - name: http
+              containerPort: 18787
+            - name: grpc-phloem
+              containerPort: 50051
+          env:
+            # ── Server ──────────────────────────────────────────────────────
+            - name: GOPEDIA_HTTP_ADDR
+              value: "0.0.0.0:18787"
+            - name: GOPEDIA_PHLOEM_GRPC_ADDR
+              value: "0.0.0.0:50051"
+            - name: GOPEDIA_LOG_LEVEL
+              value: "info"
+            - name: GOPEDIA_REPO_ROOT
+              value: "/app"
+            # ── PostgreSQL ───────────────────────────────────────────────────
+            - name: POSTGRES_HOST
+              value: "postgres-gopedia-rw.taxon.svc"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "app"
+            - name: POSTGRES_DB
+              value: "app"
+            - name: POSTGRES_SSLMODE
+              value: "disable"
+            # ── Qdrant ───────────────────────────────────────────────────────
+            - name: QDRANT_HOST
+              value: "qdrant.taxon.svc"
+            - name: QDRANT_PORT
+              value: "6333"
+            - name: QDRANT_GRPC_PORT
+              value: "6334"
+            - name: QDRANT_COLLECTION
+              value: "gopedia_markdown"
+            - name: QDRANT_VECTOR_NAME
+              value: ""
+            # ── Embedding (Ollama OpenAI-compatible API) ─────────────────────
+            # ollama-embed: ai-assistant 네임스페이스의 임베딩 전용 Ollama 서비스
+            - name: OPENAI_BASE_URL
+              value: "http://ollama-embed.ai-assistant.svc:11434/v1"
+            - name: OPENAI_EMBEDDING_MODEL
+              value: "nomic-embed-text"
+            # OPENAI_API_KEY는 Vault에서 주입됨 (placeholder 값)
+            # ── TypeDB (선택) ─────────────────────────────────────────────────
+            # TypeDB가 클러스터에 없으면 아래 주석을 유지하세요.
+            # TYPEDB_HOST 미설정 시 서버가 경고 없이 정상 기동됩니다.
+            # - name: TYPEDB_HOST
+            #   value: "typedb.taxon.svc"
+            # - name: TYPEDB_PORT
+            #   value: "1729"
+            # - name: TYPEDB_DATABASE
+            #   value: "gopedia"
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 18787
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 18787
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          # Uncomment to enable batch ingestion from filesystem documents:
+          # volumeMounts:
+          #   - name: morphogen
+          #     mountPath: /morphogen
+          #     readOnly: true
+      # volumes:
+      #   - name: morphogen
+      #     persistentVolumeClaim:
+      #       claimName: gopedia-morphogen
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gopedia-svc
+  namespace: gopedia-svc
+spec:
+  selector:
+    app: gopedia-svc
+  ports:
+    - name: http
+      port: 18787
+      targetPort: 18787
+    - name: grpc-phloem
+      port: 50051
+      targetPort: 50051
+---
+# Optional: /morphogen PVC — 파일 일괄 ingestion 시에만 필요
+#
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: gopedia-morphogen
+#   namespace: gopedia-svc
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 10Gi
+#   storageClassName: local-path   # 클러스터의 StorageClass로 교체
