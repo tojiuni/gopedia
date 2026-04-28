@@ -137,6 +137,8 @@ func (e *OpenAI) VectorSize() int {
 		return 3072
 	case strings.Contains(e.model, "nomic-embed"):
 		return 768
+	case strings.Contains(e.model, "bge-m3"):
+		return 1024
 	default:
 		return 1536
 	}
