@@ -46,6 +46,7 @@ spec:
       containers:
         - name: gopedia-svc
           image: artifacts.toji.homes/neunexus/gopedia-svc:latest
+          imagePullPolicy: Always
           # shell wrapper: Vault 시크릿 파일을 source한 뒤 Go 바이너리를 exec
           # (Go 바이너리는 /vault/secrets/env를 직접 읽지 않으므로 환경변수로 주입)
           command: ["/bin/sh", "-c"]
@@ -94,13 +95,9 @@ spec:
               value: "gopedia_markdown"
             - name: QDRANT_VECTOR_NAME
               value: ""
-            # ── Embedding (Ollama OpenAI-compatible API) ─────────────────────
-            # ollama-embed: ai-assistant 네임스페이스의 임베딩 전용 Ollama 서비스
-            - name: OPENAI_BASE_URL
-              value: "http://ollama-embed.ai-assistant.svc:11434/v1"
-            - name: OPENAI_EMBEDDING_MODEL
-              value: "nomic-embed-text"
             # OPENAI_API_KEY는 Vault에서 주입됨 (placeholder 값)
+            # OPENAI_BASE_URL, OPENAI_EMBEDDING_MODEL, LLM_CHAIN 등은
+            # llm-config ConfigMap에서 주입 (아래 envFrom 참조)
             # ── TypeDB (선택) ─────────────────────────────────────────────────
             # TypeDB가 클러스터에 없으면 아래 주석을 유지하세요.
             # TYPEDB_HOST 미설정 시 서버가 경고 없이 정상 기동됩니다.
@@ -124,6 +121,10 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 3
+          envFrom:
+            - configMapRef:
+                name: llm-config
+                optional: true
           resources:
             requests:
               cpu: 100m
