@@ -11,23 +11,33 @@ import (
 	"strings"
 )
 
+const defaultOpenAIBase = "https://api.openai.com/v1"
+
 // OpenAI is the OpenAI embeddings implementation.
+// Set OPENAI_BASE_URL to override the API base (e.g. for Ollama compatibility).
 type OpenAI struct {
-	apiKey string
-	model  string
-	client *http.Client
+	apiKey  string
+	model   string
+	baseURL string
+	client  *http.Client
 }
 
 // NewOpenAI from env OPENAI_API_KEY, OPENAI_EMBEDDING_MODEL (default text-embedding-3-small).
+// OPENAI_BASE_URL overrides the API base URL (default: https://api.openai.com/v1).
 func NewOpenAI() *OpenAI {
 	model := os.Getenv("OPENAI_EMBEDDING_MODEL")
 	if model == "" {
 		model = "text-embedding-3-small"
 	}
+	baseURL := strings.TrimRight(os.Getenv("OPENAI_BASE_URL"), "/")
+	if baseURL == "" {
+		baseURL = defaultOpenAIBase
+	}
 	return &OpenAI{
-		apiKey: os.Getenv("OPENAI_API_KEY"),
-		model:  model,
-		client: &http.Client{},
+		apiKey:  os.Getenv("OPENAI_API_KEY"),
+		model:   model,
+		baseURL: baseURL,
+		client:  &http.Client{},
 	}
 }
 
@@ -49,7 +59,7 @@ func (e *OpenAI) Embed(ctx context.Context, text string) ([]float32, error) {
 	}
 	body := openAIEmbedReq{Model: e.model, Input: text}
 	jb, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/embeddings", bytes.NewReader(jb))
+	req, err := http.NewRequestWithContext(ctx, "POST", e.baseURL+"/embeddings", bytes.NewReader(jb))
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +101,7 @@ func (e *OpenAI) EmbedMany(ctx context.Context, texts []string) ([][]float32, er
 	}
 	body := openAIEmbedReq{Model: e.model, Input: texts}
 	jb, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/embeddings", bytes.NewReader(jb))
+	req, err := http.NewRequestWithContext(ctx, "POST", e.baseURL+"/embeddings", bytes.NewReader(jb))
 	if err != nil {
 		return nil, err
 	}
@@ -120,10 +130,14 @@ func (e *OpenAI) EmbedMany(ctx context.Context, texts []string) ([][]float32, er
 	return result, nil
 }
 
-// VectorSize returns 1536 for text-embedding-3-small/ada-002, else 1536 as default.
+// VectorSize returns the expected embedding dimension for the configured model.
 func (e *OpenAI) VectorSize() int {
-	if strings.Contains(e.model, "3-large") {
+	switch {
+	case strings.Contains(e.model, "3-large"):
 		return 3072
+	case strings.Contains(e.model, "nomic-embed"):
+		return 768
+	default:
+		return 1536
 	}
-	return 1536
 }
