@@ -1,0 +1,50 @@
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+  - event: manual
+
+steps:
+  - name: validate-pr
+    image: python:3.12-slim
+    environment:
+      DAGGER_RUNNER_HOST: tcp://dagger-engine.dagger.svc.cluster.local:1234
+    commands:
+      - pip install -q dagger-io anyio
+      - python ci/run.py validate
+    when:
+      - event: pull_request
+
+  - name: build-push
+    image: python:3.12-slim
+    environment:
+      REGISTRY_TOKEN:
+        from_secret: REGISTRY_TOKEN
+      DAGGER_RUNNER_HOST: tcp://dagger-engine.dagger.svc.cluster.local:1234
+    commands:
+      - pip install -q dagger-io anyio
+      - python ci/run.py build --sha=${CI_COMMIT_SHA}
+    when:
+      - event: push
+        branch: main
+      - event: manual
+
+  - name: deploy
+    image: bitnami/kubectl:latest
+    environment:
+      KUBECONFIG_DATA:
+        from_secret: KUBECONFIG_DATA
+    commands:
+      - mkdir -p ~/.kube
+      - echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
+      - kubectl apply -f deploy/k8s/gopedia-svc.yaml
+      - kubectl apply -f https://raw.githubusercontent.com/tojiuni/neunexus/main/deploy/llm-config/configmap.yaml
+      - |
+        kubectl set image deployment/gopedia-svc \
+          gopedia-svc=artifacts.toji.homes/neunexus/gopedia-svc:${CI_COMMIT_SHA:0:7} \
+          -n gopedia-svc
+      - kubectl rollout status deployment/gopedia-svc -n gopedia-svc --timeout=120s
+    when:
+      - event: push
+        branch: main
+      - event: manual

@@ -1,0 +1,6 @@
+{
+  "name": "gopedia-ci",
+  "sdk": "python",
+  "source": "src",
+  "engineVersion": "v0.20.6"
+}

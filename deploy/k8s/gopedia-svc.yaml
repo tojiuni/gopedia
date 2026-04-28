@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gopedia-svc
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gopedia-svc
+  namespace: gopedia-svc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gopedia-svc
+  namespace: gopedia-svc
+  labels:
+    app: gopedia-svc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gopedia-svc
+  template:
+    metadata:
+      labels:
+        app: gopedia-svc
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "gopedia-svc"
+        # postgres password
+        vault.hashicorp.com/agent-inject-secret-postgres: "secret/data/neunexus/postgres"
+        vault.hashicorp.com/agent-inject-template-postgres: |
+          {{- with secret "secret/data/neunexus/postgres" -}}
+          export POSTGRES_PASSWORD="{{ index .Data.data "app-password" }}"
+          {{- end }}
+        # openai api key (used for ollama-embed compatibility)
+        vault.hashicorp.com/agent-inject-secret-gopedia-svc: "secret/data/neunexus/gopedia-svc"
+        vault.hashicorp.com/agent-inject-template-gopedia-svc: |
+          {{- with secret "secret/data/neunexus/gopedia-svc" -}}
+          export OPENAI_API_KEY="{{ index .Data.data "openai-api-key" }}"
+          {{- end }}
+    spec:
+      serviceAccountName: gopedia-svc
+      imagePullSecrets:
+        - name: artifacts-pull-secret
+      containers:
+        - name: gopedia-svc
+          image: artifacts.toji.homes/neunexus/gopedia-svc:latest
+          # Shell wrapper to source vault secrets before exec
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -a
+              for f in /vault/secrets/postgres /vault/secrets/gopedia-svc; do
+                [ -f "$f" ] && . "$f"
+              done
+              set +a
+              exec /usr/local/bin/api
+          ports:
+            - name: http
+              containerPort: 18787
+            - name: grpc
+              containerPort: 50051
+          env:
+            - name: QDRANT_HOST
+              value: "qdrant.taxon.svc"
+            - name: POSTGRES_HOST
+              value: "postgres-gopedia-rw.taxon.svc"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "app"
+            - name: POSTGRES_DB
+              value: "app"
+            - name: QDRANT_COLLECTION
+              value: "gopedia"
+          envFrom:
+            - configMapRef:
+                name: llm-config
+                optional: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 18787
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 18787
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gopedia-svc
+  namespace: gopedia-svc
+spec:
+  selector:
+    app: gopedia-svc
+  ports:
+    - name: http
+      port: 18787
+      targetPort: 18787
+    - name: grpc
+      port: 50051
+      targetPort: 50051
