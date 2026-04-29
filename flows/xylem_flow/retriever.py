@@ -109,7 +109,7 @@ def qdrant_search_l3_points(
     from qdrant_client import QdrantClient
     from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
-    qc = QdrantClient(host=host, port=port)
+    qc = QdrantClient(host=host, port=port, api_key=os.environ.get("QDRANT_API_KEY") or None)
     kwargs: dict = {}
     if vector_name:
         kwargs["using"] = vector_name
