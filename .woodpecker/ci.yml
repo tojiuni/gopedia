@@ -63,7 +63,7 @@ steps:
           -n gopedia-svc
 
         # 롤아웃 완료 대기
-        kubectl rollout status deployment/gopedia-svc -n gopedia-svc --timeout=120s
+        kubectl rollout status deployment/gopedia-svc -n gopedia-svc --timeout=600s
     when:
       - event: push
         branch: main
