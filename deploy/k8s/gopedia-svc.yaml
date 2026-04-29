@@ -32,7 +32,7 @@ spec:
         vault.hashicorp.com/agent-inject-secret-postgres: "secret/data/neunexus/postgres"
         vault.hashicorp.com/agent-inject-template-postgres: |
           {{- with secret "secret/data/neunexus/postgres" -}}
-          export POSTGRES_PASSWORD="{{ index .Data.data "app-password" }}"
+          export POSTGRES_PASSWORD="{{ index .Data.data "password-gopedia" }}"
           {{- end }}
         # OpenAI placeholder key → /vault/secrets/openai
         # 실제 사용 시 secret/neunexus/gopedia-svc 의 openai-api-key 값을 교체하세요.
@@ -79,9 +79,9 @@ spec:
             - name: POSTGRES_PORT
               value: "5432"
             - name: POSTGRES_USER
-              value: "app"
+              value: "gopedia"
             - name: POSTGRES_DB
-              value: "app"
+              value: "gopedia"
             - name: POSTGRES_SSLMODE
               value: "disable"
             # ── Qdrant ───────────────────────────────────────────────────────
