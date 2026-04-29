@@ -49,7 +49,7 @@ steps:
     commands:
       - |
         mkdir -p /tmp/.kube
-        echo "${KUBECONFIG_DATA}" | base64 -d > /tmp/.kube/config
+        printenv KUBECONFIG_DATA | base64 -d > /tmp/.kube/config
         chmod 600 /tmp/.kube/config
         export KUBECONFIG=/tmp/.kube/config
 
