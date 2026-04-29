@@ -2,7 +2,6 @@
 """Entry point for running Dagger pipelines from Woodpecker CI."""
 
 import argparse
-import asyncio
 import os
 import sys
 
@@ -25,10 +24,8 @@ async def _build_and_push(client: dagger.Client, token: dagger.Secret, sha: str)
 
     sha_addr = f"{REGISTRY}/neunexus/{IMAGE_NAME}:{tag}"
     latest_addr = f"{REGISTRY}/neunexus/{IMAGE_NAME}:latest"
-    sha_ref, _ = await asyncio.gather(
-        container.publish(sha_addr),
-        container.publish(latest_addr),
-    )
+    sha_ref = await container.publish(sha_addr)
+    await container.publish(latest_addr)
     return f"✓ {IMAGE_NAME}: {sha_ref}"
 
 
