@@ -57,9 +57,9 @@ steps:
         kubectl apply -f deploy/k8s/gopedia-svc.yaml
 
         # 새 이미지로 업데이트 (SHA 태그 고정)
-        TAG="${CI_COMMIT_SHA:0:7}"
+        TAG=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
         kubectl set image deployment/gopedia-svc \
-          gopedia-svc=artifacts.toji.homes/neunexus/gopedia-svc:${TAG} \
+          gopedia-svc=artifacts.toji.homes/neunexus/gopedia-svc:$TAG \
           -n gopedia-svc
 
         # 롤아웃 완료 대기
