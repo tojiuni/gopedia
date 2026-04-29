@@ -48,9 +48,10 @@ steps:
         from_secret: KUBECONFIG_DATA
     commands:
       - |
-        mkdir -p /root/.kube
-        echo "${KUBECONFIG_DATA}" | base64 -d > /root/.kube/config
-        chmod 600 /root/.kube/config
+        mkdir -p /tmp/.kube
+        echo "${KUBECONFIG_DATA}" | base64 -d > /tmp/.kube/config
+        chmod 600 /tmp/.kube/config
+        export KUBECONFIG=/tmp/.kube/config
 
         # 매니페스트 적용 (namespace, serviceaccount, deployment, service)
         kubectl apply -f deploy/k8s/gopedia-svc.yaml
