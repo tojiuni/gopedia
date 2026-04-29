@@ -57,8 +57,9 @@ func main() {
 			port = p
 		}
 		client, err := qdrant.NewClient(&qdrant.Config{
-			Host: qHost,
-			Port: port,
+			Host:   qHost,
+			Port:   port,
+			APIKey: os.Getenv("QDRANT_API_KEY"),
 		})
 		if err != nil {
 			slog.Warn("qdrant connect failed, continuing without Qdrant", "err", err)

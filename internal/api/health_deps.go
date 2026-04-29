@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -44,7 +45,7 @@ func checkQdrant() DepStatus {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		client, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+		client, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port, APIKey: os.Getenv("QDRANT_API_KEY")})
 		if err != nil {
 			return DepStatus{Status: "error", LatencyMs: elapsedMs(t0), CheckLevel: "full", Error: err.Error()}
 		}

@@ -34,6 +34,12 @@ spec:
           {{- with secret "secret/data/neunexus/postgres" -}}
           export POSTGRES_PASSWORD="{{ index .Data.data "password-gopedia" }}"
           {{- end }}
+        # Qdrant API key → /vault/secrets/qdrant
+        vault.hashicorp.com/agent-inject-secret-qdrant: "secret/data/neunexus/qdrant"
+        vault.hashicorp.com/agent-inject-template-qdrant: |
+          {{- with secret "secret/data/neunexus/qdrant" -}}
+          export QDRANT_API_KEY="{{ index .Data.data "api-key" }}"
+          {{- end }}
         # OpenAI placeholder key → /vault/secrets/openai
         # 실제 사용 시 secret/neunexus/gopedia-svc 의 openai-api-key 값을 교체하세요.
         vault.hashicorp.com/agent-inject-secret-openai: "secret/data/neunexus/gopedia-svc"
@@ -53,7 +59,7 @@ spec:
           args:
             - |
               set -a
-              for f in /vault/secrets/postgres /vault/secrets/openai; do
+              for f in /vault/secrets/postgres /vault/secrets/qdrant /vault/secrets/openai; do
                 [ -f "$f" ] && . "$f"
               done
               set +a

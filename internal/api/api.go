@@ -447,8 +447,9 @@ func startPhloemGRPC(grpcAddr string, py *runner.Runner, pgPool *pgxpool.Pool) {
 			port = p
 		}
 		client, err := qdrant.NewClient(&qdrant.Config{
-			Host: qHost,
-			Port: port,
+			Host:   qHost,
+			Port:   port,
+			APIKey: os.Getenv("QDRANT_API_KEY"),
 		})
 		if err != nil {
 			slog.Warn("qdrant not available — semantic search/embeddings may be limited", "err", err)
