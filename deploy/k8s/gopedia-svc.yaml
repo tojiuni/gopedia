@@ -81,7 +81,7 @@ spec:
               value: "/app"
             # ── PostgreSQL ───────────────────────────────────────────────────
             - name: POSTGRES_HOST
-              value: "postgres-gopedia-rw.taxon.svc"
+              value: "postgres-rw.taxon.svc"
             - name: POSTGRES_PORT
               value: "5432"
             - name: POSTGRES_USER
