@@ -34,6 +34,18 @@ type SearchHit struct {
 	SurroundingContext string  `json:"surrounding_context,omitempty"`
 }
 
+// AnswerResponse is the JSON body for GET /api/answer.
+type AnswerResponse struct {
+	Answer    string          `json:"answer,omitempty"`
+	Sources   []string        `json:"sources,omitempty"`
+	Found     bool            `json:"found"`
+	Trace     []string        `json:"trace,omitempty"`
+	Stderr    string          `json:"stderr,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	Failure   *APIError       `json:"failure,omitempty"`
+	RequestID string          `json:"request_id,omitempty"`
+}
+
 // RestoreResponse is the JSON body for GET /api/restore.
 type RestoreResponse struct {
 	Markdown  string          `json:"markdown,omitempty"`

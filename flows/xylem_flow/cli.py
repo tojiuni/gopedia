@@ -120,6 +120,30 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_answer(args: argparse.Namespace) -> int:
+    from flows.xylem_flow.answer_agent import run as agent_run
+
+    query = (args.query or "").strip()
+    if not query:
+        print("empty query", file=sys.stderr)
+        return 2
+
+    embedding_backend = os.environ.get("GOPEDIA_EMBEDDING_BACKEND", "openai").strip().lower()
+    if embedding_backend != "local" and not os.environ.get("OPENAI_API_KEY"):
+        print("OPENAI_API_KEY required for semantic search when backend is not local", file=sys.stderr)
+        return 2
+
+    try:
+        with _pg_connect() as conn:
+            result = agent_run(query, conn)
+    except Exception as e:
+        print(f"answer agent failed: {e}", file=sys.stderr)
+        return 2
+
+    print(json.dumps(result, ensure_ascii=False, default=str))
+    return 0
+
+
 def cmd_restore(args: argparse.Namespace) -> int:
     from flows.xylem_flow.restorer import restore_code_for_l2, restore_content_for_l1
 
@@ -206,6 +230,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Cross-encoder model name (default: BAAI/bge-reranker-v2-m3 or GOPEDIA_RERANKER_MODEL env)",
     )
     p_search.set_defaults(func=cmd_search)
+
+    p_answer = sub.add_parser("answer", help="Hierarchical RAG answer agent (l3→l2→l1 escalation)")
+    p_answer.add_argument("--query", "-q", required=True, help="Question to answer")
+    p_answer.set_defaults(func=cmd_answer)
 
     p_restore = sub.add_parser("restore", help="Restore content from PostgreSQL by l1_id or l2_id")
     p_restore.add_argument("--l1-id", default="", help="knowledge_l1.id UUID to restore full content")
