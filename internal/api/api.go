@@ -320,6 +320,65 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		fuego.OptionQuery("format", "Response format: markdown (default) or json", fuego.ParamString()),
 	)
 
+	fuego.Get(api, "/answer", func(c fuego.ContextNoBody) (AnswerResponse, error) {
+		reqID := newRequestID(c)
+		started := time.Now()
+		q := strings.TrimSpace(c.QueryParam("q"))
+		slog.Info(
+			"api request",
+			"event", "api.answer.request",
+			"request_id", reqID,
+			"method", "GET",
+			"path", "/api/answer",
+			"query_len", len([]rune(q)),
+		)
+		if q == "" {
+			return AnswerResponse{}, fuego.BadRequestError{
+				Title:  "Bad Request",
+				Detail: "missing query parameter q",
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(c, 10*time.Minute)
+		defer cancel()
+
+		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.cli", "answer", "--query", q)
+		resp := AnswerResponse{
+			Stderr:    string(stderr),
+			RequestID: reqID,
+		}
+		if err != nil {
+			resp.Error = err.Error()
+			resp.Failure = newAPIError("PYTHON_ANSWER_FAILED", err.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+			slog.Warn("answer subprocess failed", "err", err, "stderr", resp.Stderr, "request_id", reqID)
+			slog.Info("api request", "event", "api.answer.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
+			return resp, nil
+		}
+
+		var parsed struct {
+			Answer  string   `json:"answer"`
+			Sources []string `json:"sources"`
+			Found   bool     `json:"found"`
+			Trace   []string `json:"trace"`
+		}
+		if uerr := json.Unmarshal(out, &parsed); uerr != nil {
+			resp.Error = uerr.Error()
+			resp.Failure = newAPIError("ANSWER_JSON_PARSE", uerr.Error(), false, reqID, nil)
+			slog.Warn("answer json parse failed", "err", uerr, "request_id", reqID)
+			return resp, nil
+		}
+
+		resp.Answer = parsed.Answer
+		resp.Sources = parsed.Sources
+		resp.Found = parsed.Found
+		resp.Trace = parsed.Trace
+		slog.Info("api request", "event", "api.answer.success", "request_id", reqID, "found", parsed.Found, "latency_ms", time.Since(started).Milliseconds())
+		return resp, nil
+	},
+		fuego.OptionSummary("Hierarchical RAG answer agent (l3→l2→l1 escalation with LLM synthesis)"),
+		fuego.OptionQuery("q", "Question text", fuego.ParamString(), fuego.ParamRequired()),
+	)
+
 	fuego.Post(api, "/ingest", func(c fuego.ContextWithBody[IngestRequest]) (IngestResponse, error) {
 		reqID := newRequestID(c)
 		started := time.Now()
