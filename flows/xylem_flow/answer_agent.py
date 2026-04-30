@@ -303,11 +303,11 @@ def run(query: str, conn: Any) -> dict:
         messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls})
 
         # 각 tool call 처리
-        for tc in tool_calls:
+        for idx, tc in enumerate(tool_calls):
             fn = tc.get("function", {})
             tool_name = fn.get("name", "")
             tool_args = fn.get("arguments", {})
-            tool_id = tc.get("id", f"call_{iteration}")
+            tool_id = tc.get("id") or f"call_{iteration}_{idx}"
 
             trace.append(f"{tool_name}({json.dumps(tool_args, ensure_ascii=False)[:80]})")
             log.info("tool_call iter=%d tool=%s args=%s", iteration, tool_name, tool_args)
@@ -321,8 +321,12 @@ def run(query: str, conn: Any) -> dict:
                     "trace": trace,
                 }
             if tool_name == "not_found":
+                reason = tool_args.get("reason", "")
+                answer_text = f"관련 문서를 찾을 수 없습니다."
+                if reason:
+                    answer_text += f" ({reason})"
                 return {
-                    "answer": "관련 문서를 찾을 수 없습니다.",
+                    "answer": answer_text,
                     "sources": [],
                     "found": False,
                     "trace": trace,
