@@ -4,10 +4,12 @@ LLM이 tool calling으로 gopedia 지식 계층(l3→l2→l1)을 탐색하며
 질문에 답할 수 있는 내용을 찾아 합성 답변을 반환한다.
 
 탐색 순서:
-  1. search(query) → l3 hits (snippet + score)
-  2. LLM 평가 → 부족하면 restore_l2(l2_id)
-  3. LLM 평가 → 부족하면 restore_l1(l1_id)
-  4. 있으면 answer(content), 없으면 not_found()
+  1. search(query) → l3 hits (snippet + l2_summary + surrounding_context)
+  2. LLM 평가 → snippet/context/l2_summary로 70% 이상 답 가능하면 즉시 answer
+  3. 불충분하면 다른 키워드로 재검색 (최대 3회)
+  4. 구체적 값·명령어 부재 시만 restore_l2(l2_id)
+  5. 여전히 불충분하면 restore_l1(l1_id)
+  6. 있으면 answer(content), 없으면 not_found()
 
 환경변수:
   OLLAMA_CHAT_URL   - Ollama base URL (기본: http://localhost:11434)
@@ -33,14 +35,18 @@ SYSTEM_PROMPT = """당신은 내부 문서 검색 전문가입니다.
 
 반드시 다음 도구를 순서대로 사용하세요:
 1. search 도구로 관련 문서 조각(l3)을 검색하세요.
-2. 검색 결과가 질문에 답하기 충분하면 answer 도구로 답변을 제공하세요.
+2. 검색 결과(snippet + context + l2_summary)로 질문의 핵심에 답할 수 있으면 즉시 answer 도구를 호출하세요.
 3. 결과가 불충분하면 restore_l2 도구로 관련 섹션 전체를 복원하세요.
 4. 여전히 불충분하면 restore_l1 도구로 전체 문서를 복원하세요.
 5. 모든 탐색 후에도 관련 정보가 없으면 not_found 도구를 호출하세요.
 
-중요:
+중요 규칙:
 - 반드시 항상 tool을 호출해야 합니다. 직접 텍스트로 답하지 마세요.
 - answer 또는 not_found 호출로 반드시 종료해야 합니다.
+- search는 최대 3회까지 호출할 수 있습니다. 첫 검색 결과가 불충분하면 다른 키워드로 재검색하세요. 3회 후에도 관련 결과가 없으면 not_found를 호출하세요.
+- restore(l2/l1)는 search 재시도보다 나중에 사용하세요. search로 관련 섹션을 먼저 특정한 뒤 restore를 호출하세요.
+- snippet + context + l2_summary로 질문의 70% 이상 답할 수 있으면 restore 없이 즉시 answer를 호출하세요.
+- restore는 구체적인 명령어·설정값·수치가 snippet에 명시되지 않은 경우에만 사용하세요.
 - 답변은 질문자가 이해하기 쉽게 한국어로 작성하세요.
 - 출처(문서명, 섹션)를 반드시 포함하세요."""
 
@@ -163,15 +169,15 @@ def _execute_search(conn: Any, args: dict) -> str:
     if not hits:
         return json.dumps({"results": [], "message": "검색 결과 없음"}, ensure_ascii=False)
 
-    # l1_id 기준으로 중복 제거 (같은 문서의 여러 청크 → 대표 1개만)
-    seen_l1: set[str] = set()
+    # l2_id 기준으로 중복 제거 (같은 섹션의 여러 청크 → 대표 1개만, 다른 섹션은 각각 포함)
+    seen: set[str] = set()
     deduped = []
     for h in hits:
-        l1 = h.get("l1_id", "")
-        if l1 and l1 in seen_l1:
+        key = h.get("l2_id") or h.get("l1_id", "")
+        if key and key in seen:
             continue
-        if l1:
-            seen_l1.add(l1)
+        if key:
+            seen.add(key)
         deduped.append(h)
 
     results = []
@@ -182,8 +188,10 @@ def _execute_search(conn: Any, args: dict) -> str:
             "l3_id": h.get("matched_l3_id", ""),
             "title": h.get("l1_title", ""),
             "section": h.get("section_heading", ""),
+            "l2_summary": (h.get("l2_summary") or "")[:300],
             "score": round(float(h.get("qdrant_score", 0)), 4),
-            "snippet": (h.get("matched_content") or h.get("surrounding_context", ""))[:300],
+            "snippet": (h.get("matched_content") or "")[:500],
+            "context": (h.get("surrounding_context") or "")[:600],
         })
 
     return json.dumps({"results": results}, ensure_ascii=False)

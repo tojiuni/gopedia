@@ -10,6 +10,7 @@ when:
   - event: push
     branch: main
   - event: pull_request
+  - event: tag
   - event: manual
 
 steps:
@@ -24,7 +25,7 @@ steps:
     when:
       - event: pull_request
 
-  # ── main push / manual: 빌드 + registry push ────────────────────────────
+  # ── main push / manual / tag: 빌드 + registry push ─────────────────────
   - name: build-push
     image: python:3.12-slim
     environment:
@@ -34,10 +35,16 @@ steps:
     commands:
       - echo "DAGGER_RUNNER_HOST=${DAGGER_RUNNER_HOST}"
       - pip install -q dagger-io anyio
-      - python ci/run.py build --sha=${CI_COMMIT_SHA}
+      - |
+        EXTRA=""
+        if [ -n "${CI_COMMIT_TAG}" ]; then
+          EXTRA="--version-tag=${CI_COMMIT_TAG}"
+        fi
+        python ci/run.py build --sha=${CI_COMMIT_SHA} $EXTRA
     when:
       - event: push
         branch: main
+      - event: tag
       - event: manual
 
   # ── main push / manual: K8s 배포 ────────────────────────────────────────
@@ -56,8 +63,12 @@ steps:
         # 매니페스트 적용 (namespace, serviceaccount, deployment, service)
         kubectl apply -f deploy/k8s/gopedia-svc.yaml
 
-        # 새 이미지로 업데이트 (SHA 태그 고정)
-        TAG=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
+        # 새 이미지로 업데이트 (git tag 우선, 없으면 SHA short)
+        if [ -n "${CI_COMMIT_TAG}" ]; then
+          TAG="${CI_COMMIT_TAG}"
+        else
+          TAG=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
+        fi
         kubectl set image deployment/gopedia-svc \
           gopedia-svc=artifacts.toji.homes/neunexus/gopedia-svc:$TAG \
           -n gopedia-svc
@@ -67,4 +78,5 @@ steps:
     when:
       - event: push
         branch: main
+      - event: tag
       - event: manual
