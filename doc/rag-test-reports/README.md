@@ -121,6 +121,8 @@ xychart-beta
 
 > **v0.5.0** 열: [v0.5.0](v0.5.0_2026-04-02_universitas-factual.md)에서 **v0.4.0 대비 final** run 집계. `mcp*`: [mcp-2.1.0…](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md) `GET /runs/{id}/metrics` / KPI. Mermaid `xychart` **색·범례**는 뷰어마다 달라 **수치는 위 표**를 본다.
 
+> **v0.7.0**: Answer Agent(계층형 RAG) 도입 버전. Gardener IR 지표 미측정 — 수동 쿼리 5건으로 토큰 효율성 분석. 성공률 4/5(80%), 평균 iterations 4.2, 평균 추정 입력 토큰 ~9,600. IR 비교는 P1 개선(IMP-09~11) 적용 후 v0.8.0에서 측정 예정. 상세: [v0.7.0_2026-05-01_neunexus-answer-agent.md](v0.7.0_2026-05-01_neunexus-answer-agent.md)
+
 > **주석: `mcp-2.1.0` IR이 높게 보일 수 있었던 이유** (상세: [mcp-2.1.0… §2-5](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md)와 동일 취지)  
 > 1) **큐레이션된 osteon 번들** — Gardener 내장 `sample_osteon_guide_30` 계열은 질의·qrel이 osteon 가이드 맥락에 맞춰 있어, 오픈도메인 44q보다 R@5·MRR·nDCG가 오르기 쉽다.  
 > 2) **N=30** — 표본이 작으면 한 러에서 지표가 최댓값 근처로 보이기 쉽다.  
@@ -144,3 +146,4 @@ xychart-beta
 | v0.6.0 reingest | 2026-04-02 | `universitas_factual_v1` (L1 Merkle 등 인제스트 변경) | [v0.6.0-reingest_2026-04-02_universitas-factual.md](v0.6.0-reingest_2026-04-02_universitas-factual.md) |
 | v0.6.0 reingest | 2026-04-03 | 동 데이터셋 후속 | [v0.6.0-reingest_2026-04-03_universitas-factual.md](v0.6.0-reingest_2026-04-03_universitas-factual.md) |
 | mcp 2.1.0 + stack | 2026-04-08 | Gardener + Gopedia + gopedia_mcp (스모크 + **osteon 30q**; IR는 위 차트 `mcp*` 절) | [mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md) |
+| **v0.7.0** | **2026-05-01** | **Answer Agent 계층형 RAG — 수동 쿼리 5건, 토큰 효율 분석** | [**v0.7.0_2026-05-01_neunexus-answer-agent.md**](v0.7.0_2026-05-01_neunexus-answer-agent.md) |
