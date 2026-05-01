@@ -12,7 +12,9 @@ REGISTRY = "artifacts.toji.homes"
 IMAGE_NAME = "gopedia-svc"
 
 
-async def _build_and_push(client: dagger.Client, token: dagger.Secret, sha: str) -> str:
+async def _build_and_push(
+    client: dagger.Client, token: dagger.Secret, sha: str, version_tag: str | None = None
+) -> str:
     tag = sha[:7]
     # Build from repo root — the entire repo is the build context.
     container = (
@@ -26,6 +28,10 @@ async def _build_and_push(client: dagger.Client, token: dagger.Secret, sha: str)
     latest_addr = f"{REGISTRY}/neunexus/{IMAGE_NAME}:latest"
     sha_ref = await container.publish(sha_addr)
     await container.publish(latest_addr)
+    if version_tag:
+        ver_addr = f"{REGISTRY}/neunexus/{IMAGE_NAME}:{version_tag}"
+        await container.publish(ver_addr)
+        return f"✓ {IMAGE_NAME}: {sha_ref} (also tagged {version_tag})"
     return f"✓ {IMAGE_NAME}: {sha_ref}"
 
 
@@ -38,7 +44,7 @@ async def _validate(client: dagger.Client) -> str:
     return f"✓ {IMAGE_NAME}: build OK"
 
 
-async def cmd_build(sha: str, token_val: str) -> None:
+async def cmd_build(sha: str, token_val: str, version_tag: str | None = None) -> None:
     runner_host = os.getenv("DAGGER_RUNNER_HOST", "")
     print(f"DAGGER_RUNNER_HOST={runner_host!r}")
     if runner_host:
@@ -46,7 +52,7 @@ async def cmd_build(sha: str, token_val: str) -> None:
         os.environ["_EXPERIMENTAL_DAGGER_RUNNER_HOST"] = runner_host
     async with dagger.Connection() as client:
         token = client.set_secret("registry_token", token_val)
-        result = await _build_and_push(client, token, sha)
+        result = await _build_and_push(client, token, sha, version_tag=version_tag)
     print(result)
 
 
@@ -67,6 +73,7 @@ def main() -> None:
 
     p_build = sub.add_parser("build")
     p_build.add_argument("--sha", required=True)
+    p_build.add_argument("--version-tag", default=None, help="Additional version tag (e.g. agent-v1.1)")
 
     sub.add_parser("validate")
 
@@ -77,7 +84,7 @@ def main() -> None:
         if not token_val:
             print("ERROR: REGISTRY_TOKEN not set", file=sys.stderr)
             sys.exit(1)
-        anyio.run(cmd_build, args.sha, token_val)
+        anyio.run(cmd_build, args.sha, token_val, args.version_tag)
 
     elif args.cmd == "validate":
         anyio.run(cmd_validate)
