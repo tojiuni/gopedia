@@ -116,7 +116,7 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 > 목표: P1 3개 항목 적용 후 restore 없이 answer 가능한 케이스를 50% 이상으로.  
 > 연관 리포트: [`doc/rag-test-reports/v0.7.0_2026-05-01_neunexus-answer-agent.md`](rag-test-reports/v0.7.0_2026-05-01_neunexus-answer-agent.md)
 
-### IMP-09: search 결과에 l2_summary + surrounding_context 포함, snippet 확장 🔲 v0.8.0
+### IMP-09: search 결과에 l2_summary + surrounding_context 포함, snippet 확장 ✅ agent-v1.1
 - **카테고리**: Xylem / Answer Agent
 - **현상**: `answer_agent._execute_search()`가 snippet을 300자로 자르고, `retrieve_and_enrich()`가 이미 fetch한 `l2_summary`와 `surrounding_context`를 버림. LLM이 평가할 정보가 부족해 즉시 restore_l2 호출.
 - **해결**:
@@ -128,7 +128,7 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 
 ---
 
-### IMP-10: dedup 기준 l1_id → l2_id 변경 🔲 v0.8.0
+### IMP-10: dedup 기준 l1_id → l2_id 변경 ✅ agent-v1.1
 - **카테고리**: Xylem / Answer Agent
 - **현상**: `_execute_search()`에서 `l1_id` 기준으로 dedup → 같은 문서의 서로 다른 섹션 청크가 1개만 전달됨. LLM이 문서 내 여러 섹션의 정보를 한 번의 search로 볼 수 없어 restore_l1 호출.
 - **해결**: dedup 기준을 `l2_id`로 변경. 같은 문서의 다른 섹션은 각각 전달, 완전 동일 섹션만 dedup.
@@ -145,7 +145,7 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 
 ---
 
-### IMP-11: 시스템 프롬프트 튜닝 — 즉시 answer 조건 명시 🔲 v0.8.0
+### IMP-11: 시스템 프롬프트 튜닝 — 즉시 answer 조건 명시 ✅ agent-v1.1
 - **카테고리**: Xylem / Answer Agent
 - **현상**: 현재 프롬프트가 "결과가 불충분하면 restore_l2" → LLM이 과도하게 보수적으로 판단. Q2처럼 search를 6회 반복하다 최대 반복 초과.
 - **해결**: 프롬프트에 명시적 기준 추가:
@@ -232,9 +232,9 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 | IMP-06 | P3 | Pipeline | 릴리즈/DevOps | 버전 태그 관리 자동화 + CHANGELOG | ✅ pipeline v0.2.0 |
 | IMP-07 | P3 | Pipeline | Phloem/운영 | 인제스트 이력 추적 (Audit log) | ✅ pipeline v0.2.0 |
 | IMP-08 | **P1** | Pipeline | Phloem+Xylem/Embedding | multilingual-e5-large 도입 + 로컬 임베딩 서비스 | ✅ pipeline v0.3.0 |
-| IMP-09 | **P1** | **Agent** | answer_agent/search | search 결과에 l2_summary + surrounding_context 포함, snippet 확장 | 🔲 agent-v1.1 |
-| IMP-10 | **P1** | **Agent** | answer_agent/search | dedup 기준 l1_id → l2_id 변경 | 🔲 agent-v1.1 |
-| IMP-11 | **P1** | **Agent** | answer_agent/prompt | 시스템 프롬프트 튜닝 — 즉시 answer 조건, search 횟수 제한 | 🔲 agent-v1.1 |
+| IMP-09 | **P1** | **Agent** | answer_agent/search | search 결과에 l2_summary + surrounding_context 포함, snippet 확장 | ✅ agent-v1.1 |
+| IMP-10 | **P1** | **Agent** | answer_agent/search | dedup 기준 l1_id → l2_id 변경 | ✅ agent-v1.1 |
+| IMP-11 | **P1** | **Agent** | answer_agent/prompt | 시스템 프롬프트 튜닝 — 즉시 answer 조건, search 횟수 제한 | ✅ agent-v1.1 |
 | IMP-12 | P2 | **Agent** | Architecture | Python 상주 gRPC 서비스 전환 (subprocess 제거) | 🔲 agent-v2.0 |
 | IMP-13 | P2 | **Agent** | Retrieval | Query Rewriting — 한국어 구어체 → 기술 용어 변환 | 🔲 agent-v2.0 |
 | IMP-14 | P3 | Pipeline | Phloem+Xylem/Embedding | L2 summary Qdrant 인덱싱 (L2+L3 hybrid 검색) | 🔲 pipeline v0.8.0 |
