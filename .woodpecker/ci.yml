@@ -78,4 +78,5 @@ steps:
     when:
       - event: push
         branch: main
+      - event: tag
       - event: manual

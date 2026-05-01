@@ -4,10 +4,12 @@ LLM이 tool calling으로 gopedia 지식 계층(l3→l2→l1)을 탐색하며
 질문에 답할 수 있는 내용을 찾아 합성 답변을 반환한다.
 
 탐색 순서:
-  1. search(query) → l3 hits (snippet + score)
-  2. LLM 평가 → 부족하면 restore_l2(l2_id)
-  3. LLM 평가 → 부족하면 restore_l1(l1_id)
-  4. 있으면 answer(content), 없으면 not_found()
+  1. search(query) → l3 hits (snippet + l2_summary + surrounding_context)
+  2. LLM 평가 → snippet/context/l2_summary로 70% 이상 답 가능하면 즉시 answer
+  3. 불충분하면 다른 키워드로 재검색 (최대 3회)
+  4. 구체적 값·명령어 부재 시만 restore_l2(l2_id)
+  5. 여전히 불충분하면 restore_l1(l1_id)
+  6. 있으면 answer(content), 없으면 not_found()
 
 환경변수:
   OLLAMA_CHAT_URL   - Ollama base URL (기본: http://localhost:11434)
