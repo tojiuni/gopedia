@@ -109,7 +109,7 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 
 ---
 
-## P1 — v0.8.0 신규 (Answer Agent 토큰 효율성)
+## P1 — v0.8.0 신규 (Answer Agent 토큰 효율성) — Agent 레이어
 
 > 배경: v0.7.0 테스트에서 search 결과만으로 답변 가능한 케이스가 0% — 모든 질문이 restore_l2/l1을 호출함.  
 > 원인: snippet이 300자로 제한되어 LLM이 콘텐츠를 평가하지 못하고 즉각 escalation.  
@@ -157,7 +157,7 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 
 ---
 
-## P2 — v0.9.0 (아키텍처 개선)
+## P2 — v0.9.0 (아키텍처 개선) — Agent 레이어
 
 ### IMP-12: Python 상주 gRPC 서비스 전환 🔲 v0.9.0
 - **카테고리**: Xylem / Architecture
@@ -194,7 +194,7 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 
 ---
 
-## P3 — 중장기 (재인덱싱 필요)
+## P3 — 중장기 (재인덱싱 필요) — Pipeline 레이어
 
 ### IMP-14: L2 summary Qdrant 인덱싱 (L2+L3 hybrid 검색) 🔲 미정
 - **카테고리**: Phloem+Xylem / Embedding
@@ -220,20 +220,22 @@ v0.1.0 RAG 테스트 결과 및 운영 경험에서 도출된 개선 항목.
 
 ## 항목 요약
 
-| ID | 우선순위 | 카테고리 | 제목 | 상태 |
-|----|----------|----------|------|------|
-| IMP-01 | **P1** | Phloem/Sink | 중복 인제스트 방지 | ✅ v0.2.0 |
-| IMP-02 | **P1** | Xylem/API | 검색 결과 source_path / doc_name 노출 | ✅ v0.2.0 |
-| IMP-03 | P2 | Phloem/Embedding | 한/영 혼용 임베딩 품질 개선 | ✅ v0.2.0 |
-| IMP-04 | P2 | Phloem/Ingest | `run` entrypoint 코드 파일 자동 라우팅 | ✅ v0.2.0 |
-| IMP-05 | P2 | 품질 테스트 | Gardener 코드 도메인 smoke 데이터셋 등록 | ✅ v0.2.0 |
-| IMP-06 | P3 | 릴리즈/DevOps | 버전 태그 관리 자동화 + CHANGELOG | ✅ v0.2.0 |
-| IMP-07 | P3 | Phloem/운영 | 인제스트 이력 추적 (Audit log) | ✅ v0.2.0 |
-| IMP-08 | **P1** | Phloem+Xylem/Embedding | multilingual-e5-large 도입 + 로컬 임베딩 서비스 | ✅ v0.3.0 |
-| IMP-09 | **P1** | Xylem/Answer Agent | search 결과에 l2_summary + surrounding_context 포함, snippet 확장 | 🔲 v0.8.0 |
-| IMP-10 | **P1** | Xylem/Answer Agent | dedup 기준 l1_id → l2_id 변경 | 🔲 v0.8.0 |
-| IMP-11 | **P1** | Xylem/Answer Agent | 시스템 프롬프트 튜닝 — 즉시 answer 조건 명시 | 🔲 v0.8.0 |
-| IMP-12 | P2 | Xylem/Architecture | Python 상주 gRPC 서비스 전환 (subprocess 제거) | 🔲 v0.9.0 |
-| IMP-13 | P2 | Xylem/Retrieval | Query Rewriting — 한국어 구어체 → 기술 용어 변환 | 🔲 v0.9.0 |
-| IMP-14 | P3 | Phloem+Xylem/Embedding | L2 summary Qdrant 인덱싱 (L2+L3 hybrid 검색) | 🔲 미정 |
-| IMP-15 | P3 | Xylem/Retrieval | Cross-Encoder Reranker 기본 활성화 | 🔲 미정 |
+> **레이어 구분**: Pipeline = Phloem(인제스트/청킹/임베딩) + Xylem(검색/retrieval) / Agent = answer_agent, 프롬프트, tool-calling 전략
+
+| ID | 우선순위 | 레이어 | 카테고리 | 제목 | 상태 |
+|----|----------|--------|----------|------|------|
+| IMP-01 | **P1** | Pipeline | Phloem/Sink | 중복 인제스트 방지 | ✅ pipeline v0.2.0 |
+| IMP-02 | **P1** | Pipeline | Xylem/API | 검색 결과 source_path / doc_name 노출 | ✅ pipeline v0.2.0 |
+| IMP-03 | P2 | Pipeline | Phloem/Embedding | 한/영 혼용 임베딩 품질 개선 | ✅ pipeline v0.2.0 |
+| IMP-04 | P2 | Pipeline | Phloem/Ingest | `run` entrypoint 코드 파일 자동 라우팅 | ✅ pipeline v0.2.0 |
+| IMP-05 | P2 | Pipeline | 품질 테스트 | Gardener 코드 도메인 smoke 데이터셋 등록 | ✅ pipeline v0.2.0 |
+| IMP-06 | P3 | Pipeline | 릴리즈/DevOps | 버전 태그 관리 자동화 + CHANGELOG | ✅ pipeline v0.2.0 |
+| IMP-07 | P3 | Pipeline | Phloem/운영 | 인제스트 이력 추적 (Audit log) | ✅ pipeline v0.2.0 |
+| IMP-08 | **P1** | Pipeline | Phloem+Xylem/Embedding | multilingual-e5-large 도입 + 로컬 임베딩 서비스 | ✅ pipeline v0.3.0 |
+| IMP-09 | **P1** | **Agent** | answer_agent/search | search 결과에 l2_summary + surrounding_context 포함, snippet 확장 | 🔲 agent-v1.1 |
+| IMP-10 | **P1** | **Agent** | answer_agent/search | dedup 기준 l1_id → l2_id 변경 | 🔲 agent-v1.1 |
+| IMP-11 | **P1** | **Agent** | answer_agent/prompt | 시스템 프롬프트 튜닝 — 즉시 answer 조건, search 횟수 제한 | 🔲 agent-v1.1 |
+| IMP-12 | P2 | **Agent** | Architecture | Python 상주 gRPC 서비스 전환 (subprocess 제거) | 🔲 agent-v2.0 |
+| IMP-13 | P2 | **Agent** | Retrieval | Query Rewriting — 한국어 구어체 → 기술 용어 변환 | 🔲 agent-v2.0 |
+| IMP-14 | P3 | Pipeline | Phloem+Xylem/Embedding | L2 summary Qdrant 인덱싱 (L2+L3 hybrid 검색) | 🔲 pipeline v0.8.0 |
+| IMP-15 | P3 | Pipeline | Xylem/Retrieval | Cross-Encoder Reranker 기본 활성화 | 🔲 pipeline v0.8.0 |
