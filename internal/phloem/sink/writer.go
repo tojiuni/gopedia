@@ -82,13 +82,8 @@ func (s *DefaultSink) Write(ctx context.Context, msg *pb.RhizomeMessage, chunks 
 			msg.Title, sourceType,
 		).Scan(&titleDocID, &titleL2Hash)
 		if titleErr == nil && string(titleL2Hash) == string(l2ChildHash) {
-			// Same title and same content hash — return the existing document UUID.
-			var existingUUIDByTitle uuid.UUID
-			if lookupErr := s.pg.QueryRow(ctx,
-				`SELECT id FROM documents WHERE id = $1`, titleDocID,
-			).Scan(&existingUUIDByTitle); lookupErr == nil {
-				return existingUUIDByTitle.String(), nil
-			}
+			// Same title and same content hash — titleDocID is already the documents.id FK.
+			return titleDocID.String(), nil
 		}
 		// titleErr == nil but hash differs → fall through to normal upsert (version bump).
 
