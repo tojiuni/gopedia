@@ -12,9 +12,17 @@ from flows.xylem_flow.retriever import (
     fetch_rich_context,
     retrieve_and_enrich,
 )
+from flows.xylem_flow.tree import (
+    build_project_l1_tree,
+    fetch_project_l1_nodes,
+    get_project_tree_for_viewer,
+)
 
 __all__ = [
+    "build_project_l1_tree",
+    "fetch_project_l1_nodes",
     "fetch_rich_context",
+    "get_project_tree_for_viewer",
     "restore_content_for_l1",
     "restore_markdown_for_l1",
     "retrieve_and_enrich",
