@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Root entrypoint: load Markdown from path and send to Phloem via gRPC.
+Root entrypoint: load Markdown or source code from path and send to Phloem via gRPC.
+
+Markdown files (.md, .markdown) → WikiPipeline (domain=wiki).
+Code files (.py, .go, .ts, .tsx, .js, .jsx, .java, .rs, .cpp, .c, .h) → CodePipeline (domain=code).
+
 Usage: python -m property.root_props.run /path/to/file.md
-       python -m property.root_props.run /path/to/dir/
+       python -m property.root_props.run /path/to/dir/   (mixed markdown + code)
 Env: GOPEDIA_PHLOEM_GRPC_ADDR (default localhost:50051)
 """
 from __future__ import annotations
@@ -20,6 +24,7 @@ sys.path.insert(0, str(repo_root))
 from property.root_props.markdown_loader import (
     call_phloem_ingest,
     collect_markdown_paths,
+    finalize_project,
     load_markdown,
     register_project,
 )
@@ -31,6 +36,21 @@ except ImportError:
     sync_document_to_typedb = None  # TypeDB sync optional if driver missing
 
 # Env: TYPEDB_HOST (optional) — when set, syncs each ingested doc to TypeDB.
+
+_MD_EXTENSIONS = {".md", ".markdown"}
+
+
+def _collect_all_paths(root: Path) -> list[Path]:
+    """Collect markdown and code files from root, skipping hidden dirs."""
+    if root.is_file():
+        return [root]
+    paths = []
+    for p in sorted(root.rglob("*")):
+        if any(part.startswith(".") for part in p.parts):
+            continue
+        if p.is_file() and p.suffix.lower() in (_MD_EXTENSIONS | _CODE_EXTENSIONS):
+            paths.append(p)
+    return paths
 
 
 def main() -> None:
@@ -47,7 +67,7 @@ def main() -> None:
     project_root = path if path.is_dir() else path.parent
 
     with grpc.insecure_channel(addr) as channel:
-        project_id, project_machine_id = register_project(
+        project_id, project_machine_id, already_up_to_date = register_project(
             channel,
             str(project_root),
             name=project_root.name,
@@ -56,43 +76,59 @@ def main() -> None:
         project_id_str = str(project_id) if project_id else ""
         project_mid_str = str(project_machine_id) if project_machine_id else ""
 
-        for md_path in collect_markdown_paths(path):
-            if md_path.suffix.lower() in _CODE_EXTENSIONS:
-                print(f"[code] {md_path}")
+        if already_up_to_date:
+            print(f"[skip] project already up to date (project_id={project_id})")
+            return
+
+        # Single-file: keep existing behaviour (markdown or code)
+        if path.is_file():
+            all_paths = [path]
+        else:
+            all_paths = _collect_all_paths(path)
+
+        for file_path in all_paths:
+            ext = file_path.suffix.lower()
+
+            if ext in _CODE_EXTENSIONS:
+                # ── Code domain ──────────────────────────────────────────
+                print(f"[code] {file_path}")
                 ok, doc_id, machine_id = ingest_code_file(
-                    channel, md_path, project_id_str, project_mid_str
+                    channel, file_path, project_id_str, project_mid_str
                 )
                 if ok:
-                    print(f"OK {md_path} -> doc_id={doc_id} machine_id={machine_id}")
+                    print(f"  OK -> doc_id={doc_id}  machine_id={machine_id}")
                 else:
-                    print(f"FAIL {md_path} doc_id={doc_id} machine_id={machine_id}", file=sys.stderr)
+                    print(f"  FAIL {file_path}", file=sys.stderr)
                     sys.exit(2)
-            else:
-                print(f"[md] {md_path}")
-                content, title, source_metadata = load_markdown(md_path)
+
+            elif ext in _MD_EXTENSIONS:
+                # ── Markdown domain ───────────────────────────────────────
+                content, title, source_metadata = load_markdown(file_path)
                 meta = dict(source_metadata)
                 if project_id_str:
                     meta["project_id"] = project_id_str
                 if project_mid_str:
                     meta["project_machine_id"] = project_mid_str
+                print(f"[md]   {file_path}")
                 ok, doc_id, machine_id = call_phloem_ingest(
                     channel, title, content, meta
                 )
                 if ok:
-                    print(f"OK {md_path} -> doc_id={doc_id} machine_id={machine_id}")
+                    print(f"  OK -> doc_id={doc_id}  machine_id={machine_id}")
                     if sync_document_to_typedb is not None and os.environ.get("TYPEDB_HOST"):
                         try:
-                            sync_document_to_typedb(
-                                doc_id, int(machine_id), title, content
-                            )
+                            sync_document_to_typedb(doc_id, int(machine_id), title, content)
                         except Exception as e:
-                            print(
-                                f"TypeDB sync failed (doc_id={doc_id}): {e}",
-                                file=sys.stderr,
-                            )
+                            print(f"  TypeDB sync failed: {e}", file=sys.stderr)
                 else:
-                    print(f"FAIL {md_path} doc_id={doc_id} machine_id={machine_id}", file=sys.stderr)
+                    print(f"  FAIL {file_path} doc_id={doc_id} machine_id={machine_id}", file=sys.stderr)
                     sys.exit(2)
+
+        # Store Merkle hash for next-run deduplication.
+        if project_id:
+            ok = finalize_project(channel, project_id)
+            if ok:
+                print(f"[finalize] project content_hash stored (project_id={project_id})")
 
 
 if __name__ == "__main__":
