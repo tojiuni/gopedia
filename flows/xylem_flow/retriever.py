@@ -350,7 +350,7 @@ def retrieve_and_enrich(
     limit: Optional[int] = None,
     project_id: Optional[int] = None,
     embedding_model: Optional[str] = None,
-    use_reranker: bool = False,
+    use_reranker: bool = os.environ.get("GOPEDIA_RERANKER_ENABLED", "false").lower() in ("true", "1"),
     reranker_model: Optional[str] = None,
 ) -> List[dict]:
     """If ``limit`` is passed (legacy), it overrides ``final_limit``."""
