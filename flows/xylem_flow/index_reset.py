@@ -43,14 +43,29 @@ def _pg_connect():
 
 
 def _count_rows(conn, table: str, project_id: int | None) -> int:
-    if project_id is None or table == "keyword_so":
+    if project_id is None:
         row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+    elif table == "keyword_so":
+        return 0  # no project FK — skipped for partial reset
     elif table == "projects":
-        row = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE id = %s", (project_id,)).fetchone()
+        row = conn.execute("SELECT COUNT(*) FROM projects WHERE id = %s", (project_id,)).fetchone()
     elif table == "documents":
-        row = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE project_id = %s", (project_id,)).fetchone()
-    elif table in ("knowledge_l1", "knowledge_l2", "knowledge_l3"):
-        row = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE project_id = %s", (project_id,)).fetchone()
+        row = conn.execute("SELECT COUNT(*) FROM documents WHERE project_id = %s", (project_id,)).fetchone()
+    elif table == "knowledge_l1":
+        row = conn.execute("SELECT COUNT(*) FROM knowledge_l1 WHERE project_id = %s", (project_id,)).fetchone()
+    elif table == "knowledge_l2":
+        row = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_l2 WHERE l1_id IN "
+            "(SELECT id FROM knowledge_l1 WHERE project_id = %s)",
+            (project_id,),
+        ).fetchone()
+    elif table == "knowledge_l3":
+        row = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_l3 WHERE l2_id IN "
+            "(SELECT id FROM knowledge_l2 WHERE l1_id IN "
+            "(SELECT id FROM knowledge_l1 WHERE project_id = %s))",
+            (project_id,),
+        ).fetchone()
     else:
         row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
     return int(row[0]) if row else 0
@@ -64,14 +79,29 @@ def reset_postgres(project_id: int | None, dry_run: bool) -> dict:
             result[table] = {"rows": count, "deleted": 0}
             if dry_run or count == 0:
                 continue
-            if project_id is None or table == "keyword_so":
+            if project_id is None:
                 conn.execute(f"TRUNCATE {table} CASCADE")
+            elif table == "keyword_so":
+                pass  # no project FK — skip for partial reset
             elif table == "projects":
                 conn.execute("DELETE FROM projects WHERE id = %s", (project_id,))
             elif table == "documents":
                 conn.execute("DELETE FROM documents WHERE project_id = %s", (project_id,))
-            elif table in ("knowledge_l1", "knowledge_l2", "knowledge_l3"):
-                conn.execute(f"DELETE FROM {table} WHERE project_id = %s", (project_id,))
+            elif table == "knowledge_l1":
+                conn.execute("DELETE FROM knowledge_l1 WHERE project_id = %s", (project_id,))
+            elif table == "knowledge_l2":
+                conn.execute(
+                    "DELETE FROM knowledge_l2 WHERE l1_id IN "
+                    "(SELECT id FROM knowledge_l1 WHERE project_id = %s)",
+                    (project_id,),
+                )
+            elif table == "knowledge_l3":
+                conn.execute(
+                    "DELETE FROM knowledge_l3 WHERE l2_id IN "
+                    "(SELECT id FROM knowledge_l2 WHERE l1_id IN "
+                    "(SELECT id FROM knowledge_l1 WHERE project_id = %s))",
+                    (project_id,),
+                )
             result[table]["deleted"] = count
         if not dry_run:
             conn.commit()
