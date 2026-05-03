@@ -120,13 +120,12 @@ def sync_document_to_typedb(
     if not typedb_database:
         typedb_database = os.environ.get("TYPEDB_DATABASE", "gopedia")
 
-    from typedb.driver import TransactionType
-
     l2_l3_rows = _fetch_l2_l3_rows(l1_id)
     l1_safe = _escape(str(l1_id)[:256])
     proj_safe = _escape(str(project_id)[:64])
     src_safe = _escape((source_type or "md")[:64])
 
+    from typedb.driver import TransactionType  # imported here to allow mocking in tests
     driver = _typedb_driver(typedb_host, typedb_port)
     try:
         with driver.transaction(typedb_database, TransactionType.WRITE) as tx:
@@ -201,8 +200,6 @@ def sync_directory_tree_to_typedb(
     if not typedb_database:
         typedb_database = os.environ.get("TYPEDB_DATABASE", "gopedia")
 
-    from typedb.driver import TransactionType
-
     proj_safe = _escape(str(project_id)[:64])
 
     # Flatten nested tree if needed
@@ -222,6 +219,7 @@ def sync_directory_tree_to_typedb(
     if not flat:
         return True
 
+    from typedb.driver import TransactionType  # imported here to allow mocking in tests
     driver = _typedb_driver(typedb_host, typedb_port)
     try:
         with driver.transaction(typedb_database, TransactionType.WRITE) as tx:
