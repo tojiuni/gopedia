@@ -62,6 +62,30 @@
 
 ---
 
+## P@3 개선 — Qrel 확장
+
+> **배경**: v0.8.0 베이스라인 측정 결과 P@3 = 0.333 (run_id: `5c0ddfd0-612f-4118-a993-294a1154e47e`).
+> 이 값은 osteon 데이터셋이 **쿼리당 qrel 1개**이기 때문에 발생하는 구조적 상한값이며,
+> 파이프라인 수정으로는 개선 불가. qrel 자체를 확장해야 함.
+
+### TODO
+
+- [ ] `dataset/sample_osteon_guide_30_v2.json` qrel 확장
+  - 각 쿼리에 primary qrel 1개 → secondary qrel 2~3개 추가
+  - secondary 기준: 동일 섹션 인접 청크(`l2_id` 기준 ± 1), 동일 주제 다른 파일 청크
+  - 작업 방법: gardener_gopedia `POST /datasets/{id}/queries/{qid}/qrels` API 활용
+    또는 JSON 직접 편집 후 `POST /datasets` + `POST .../resolve-qrels`
+- [ ] gardener_gopedia 재평가 실행 (`quality_preset` 대신 확장된 dataset 사용)
+  - 목표: P@3 ≥ 0.60 (쿼리당 관련 청크 2개 이상 top-3 내 확인)
+- [ ] `doc/rag-test-reports/`에 비교 리포트 저장 (v0.8.0 대비 P@3 delta 기록)
+
+### 우선순위
+
+GraphDB RAG Phase 4 완료 후 진행 권장.
+P@3는 현재 라이브 서비스 품질에 영향 없음 (Recall@5=1.0 유지 중).
+
+---
+
 ## 검색 품질 개선 후보 (평가 메트릭 기반)
 
 **배경**
