@@ -350,11 +350,13 @@ def retrieve_and_enrich(
     limit: Optional[int] = None,
     project_id: Optional[int] = None,
     embedding_model: Optional[str] = None,
-    use_reranker: bool = False,
+    use_reranker: Optional[bool] = None,
     reranker_model: Optional[str] = None,
 ) -> List[dict]:
     """If ``limit`` is passed (legacy), it overrides ``final_limit``."""
     query = _rewrite_query(query)
+    if use_reranker is None:
+        use_reranker = os.environ.get("GOPEDIA_RERANKER_ENABLED", "false").lower() in ("true", "1")
     from flows.xylem_flow.project_config import (
         fetch_project_source_metadata,
         resolve_retrieval_settings,

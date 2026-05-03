@@ -109,6 +109,11 @@ spec:
               value: "http://ollama-generate.ai-assistant.svc:11434"
             - name: OLLAMA_CHAT_MODEL
               value: "gemma4:26b"
+            # ── Reranker (선택) ──────────────────────────────────────────────
+            # Cross-Encoder reranker 활성화. IMP-12(상주 서비스) 적용 전에는
+            # 요청당 모델 로딩 오버헤드(~400MB)가 발생하므로 기본 비활성.
+            # - name: GOPEDIA_RERANKER_ENABLED
+            #   value: "true"
             # ── TypeDB (선택) ─────────────────────────────────────────────────
             # TypeDB가 클러스터에 없으면 아래 주석을 유지하세요.
             # TYPEDB_HOST 미설정 시 서버가 경고 없이 정상 기동됩니다.
