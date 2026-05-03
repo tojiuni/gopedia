@@ -9,6 +9,44 @@ metadata:
   name: typedb
   namespace: taxon
 ---
+# Headless Service — StatefulSet Pod identity DNS 전용
+# typedb-0.typedb-headless.taxon.svc.cluster.local 형태로 Pod 직접 접근 가능
+# 클라이언트 접속에는 사용하지 않음
+apiVersion: v1
+kind: Service
+metadata:
+  name: typedb-headless
+  namespace: taxon
+spec:
+  selector:
+    app: typedb
+  clusterIP: None
+  ports:
+    - name: typedb
+      port: 1729
+      targetPort: 1729
+    - name: console
+      port: 8000
+      targetPort: 8000
+---
+# ClusterIP Service — 클라이언트 접속용 (TYPEDB_HOST 값)
+# gopedia-svc: TYPEDB_HOST = "typedb.taxon.svc"
+apiVersion: v1
+kind: Service
+metadata:
+  name: typedb
+  namespace: taxon
+spec:
+  selector:
+    app: typedb
+  ports:
+    - name: typedb
+      port: 1729
+      targetPort: 1729
+    - name: console
+      port: 8000
+      targetPort: 8000
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -17,7 +55,7 @@ metadata:
   labels:
     app: typedb
 spec:
-  serviceName: typedb
+  serviceName: typedb-headless
   replicas: 1
   selector:
     matchLabels:
@@ -70,20 +108,3 @@ spec:
         resources:
           requests:
             storage: 20Gi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: typedb
-  namespace: taxon
-spec:
-  selector:
-    app: typedb
-  clusterIP: None
-  ports:
-    - name: typedb
-      port: 1729
-      targetPort: 1729
-    - name: console
-      port: 8000
-      targetPort: 8000
