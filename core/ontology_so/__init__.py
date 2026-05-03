@@ -1,8 +1,7 @@
-# TypeDB sync for Gopedia Rhizome (document, section, composition).
+# TypeDB sync for Gopedia Rhizome (file, section, chunk, directory hierarchy).
 from .typedb_sync import (
-    SectionRow,
-    parse_toc_and_sections,
+    sync_directory_tree_to_typedb,
     sync_document_to_typedb,
 )
 
-__all__ = ["sync_document_to_typedb", "parse_toc_and_sections", "SectionRow"]
+__all__ = ["sync_document_to_typedb", "sync_directory_tree_to_typedb"]

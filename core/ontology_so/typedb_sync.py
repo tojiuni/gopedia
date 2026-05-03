@@ -1,288 +1,259 @@
 """
-Sync a single document from (doc_id, machine_id, title, content) into TypeDB.
-Inserts document + sections + composition hierarchy per core/ontology_so/typedb_schema.typeql.
-Used by Root after Phloem IngestMarkdown, or by a batch script reading from PG.
+Sync documents and directory trees from PostgreSQL into TypeDB.
+
+Schema: core/ontology_so/typedb_schema.typeql
+  directory → file → section → chunk  (via `contains` relation)
+
+Public API:
+  sync_document_to_typedb(l1_id, project_id, source_type)
+  sync_directory_tree_to_typedb(project_id, l1_rows)
 """
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
-from typing import Optional
-
-HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
-KEYWORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{2,}")
+import os
 
 
-@dataclass
-class SectionRow:
-    section_id: str
-    toc_level: int
-    heading: str
-    body: str
-    parent_section_id: Optional[str]  # None => parent is document
-
-
-def parse_toc_and_sections(content: str) -> list[SectionRow]:
-    """
-    Parse markdown content into a flat list of sections with bodies.
-    Section IDs match Go FlattenTOC: s0, s1, s2, ... (depth-first).
-    Body is content from the line after the heading until the next heading of same or higher level.
-    """
-    lines = content.split("\n")
-    rows: list[SectionRow] = []
-    heading_stack: list[tuple[int, str]] = []  # (level, section_id)
-    idx = 0
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-        m = HEADING_RE.match(stripped)
-        if m:
-            level = len(m.group(1))
-            heading_text = m.group(2).strip()
-            # Pop stack until we're under the right parent
-            while heading_stack and heading_stack[-1][0] >= level:
-                heading_stack.pop()
-            parent_sid = heading_stack[-1][1] if heading_stack else None
-            section_id = f"s{idx}"
-            idx += 1
-            heading_stack.append((level, section_id))
-            # Body: from next line until next same-or-higher-level heading
-            body_lines: list[str] = []
-            j = i + 1
-            while j < len(lines):
-                next_line = lines[j]
-                next_stripped = next_line.strip()
-                next_m = HEADING_RE.match(next_stripped)
-                if next_m:
-                    next_level = len(next_m.group(1))
-                    if next_level <= level:
-                        break
-                body_lines.append(next_line)
-                j += 1
-            body = "\n".join(body_lines).strip() if body_lines else ""
-            rows.append(
-                SectionRow(
-                    section_id=section_id,
-                    toc_level=level,
-                    heading=heading_text,
-                    body=body[:10000] if len(body) > 10000 else body,  # cap for TypeDB
-                    parent_section_id=parent_sid,
-                )
-            )
-            i = j
-            continue
-        i += 1
-    return rows
-
-
-def _escape_typeql_string(s: str) -> str:
-    """Escape string for TypeQL attribute value (double quotes, backslash, newlines)."""
+def _escape(s: str) -> str:
+    """Escape a string value for TypeQL (double quotes, backslash, newlines)."""
     return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", " ")
 
 
-def sync_document_to_typedb(
-    doc_id: str,
-    machine_id: int,
-    title: str,
-    content: str,
-    *,
-    typedb_host: str = "",
-    typedb_port: str = "1729",
-    typedb_database: str = "gopedia",
-) -> bool:
-    """
-    Insert one document and its sections + composition into TypeDB.
-    Uses typedb_schema.typeql: document, section, composition (parent/child).
-    Returns True on success.
-    """
-    import os
-
-    if not typedb_host:
-        typedb_host = os.environ.get("TYPEDB_HOST", "localhost")
-    if not typedb_port:
-        typedb_port = os.environ.get("TYPEDB_PORT", "1729")
-    if not typedb_database:
-        typedb_database = os.environ.get("TYPEDB_DATABASE", "gopedia")
-
+def _typedb_driver(typedb_host: str = "", typedb_port: str = "1729"):
+    """Return a connected TypeDB driver. Raises if typedb-driver not installed."""
     try:
-        from typedb.driver import (
-            Credentials,
-            DriverOptions,
-            TransactionType,
-            TypeDB,
-        )
+        from typedb.driver import Credentials, DriverOptions, TypeDB
     except ImportError:
         raise RuntimeError("typedb-driver not installed") from None
 
-    sections = parse_toc_and_sections(content)
-    l3_rows = _fetch_l3_sentences_from_postgres(doc_id)
-    addr = f"{typedb_host}:{typedb_port}"
-
-    # Normalize title for TypeQL (cap length, escape)
-    doc_id_safe = _escape_typeql_string(str(doc_id)[:256])
-
+    host = typedb_host or os.environ.get("TYPEDB_HOST", "localhost")
+    port = typedb_port or os.environ.get("TYPEDB_PORT", "1729")
     username = os.environ.get("TYPEDB_USERNAME", "admin")
     password = os.environ.get("TYPEDB_PASSWORD", "password")
-    source_type = _escape_typeql_string(
-        (os.environ.get("GOPEDIA_SOURCE_TYPE") or "md")[:64]
-    )
-    project_id = _escape_typeql_string(
-        (os.environ.get("GOPEDIA_PROJECT_ID") or "0")[:64]
-    )
-
-    driver = TypeDB.driver(
-        addr,
+    return TypeDB.driver(
+        f"{host}:{port}",
         Credentials(username, password),
         DriverOptions(is_tls_enabled=False),
     )
-    try:
-        with driver.transaction(typedb_database, TransactionType.WRITE) as tx:
-            # Insert document (align with doc/design: l1_id + source_type + project_id)
-            tx.query(
-                f'insert $d isa document, has doc_id "{doc_id_safe}", '
-                f'has source_type "{source_type}", has project_id "{project_id}";'
-            ).resolve()
-            # Insert sections and composition
-            for row in sections:
-                sid_safe = _escape_typeql_string(row.section_id[:256])
-                tx.query(
-                    f'insert $s isa section, has section_id "{sid_safe}", has toc_level {row.toc_level};'
-                ).resolve()
-                if row.parent_section_id is None:
-                    tx.query(
-                        f'match $d isa document, has doc_id "{doc_id_safe}"; '
-                        f'$s isa section, has section_id "{sid_safe}"; '
-                        "insert (parent: $d, child: $s) isa composition;"
-                    ).resolve()
-                else:
-                    parent_safe = _escape_typeql_string(row.parent_section_id[:256])
-                    tx.query(
-                        f'match $p isa section, has section_id "{parent_safe}"; '
-                        f'$s isa section, has section_id "{sid_safe}"; '
-                        "insert (parent: $p, child: $s) isa composition;"
-                    ).resolve()
-
-            # Insert sentences (L3) and connect section -> sentence, sentence -> keyword.
-            for l3 in l3_rows:
-                sid_safe = _escape_typeql_string(l3["section_id"][:256])
-                body_safe = _escape_typeql_string((l3["content"] or "")[:10000])
-                l3_uuid = str(l3["l3_id"])
-                l3_safe = _escape_typeql_string(l3_uuid[:256])
-
-                tx.query(
-                    f'insert $x isa sentence, has l3_id "{l3_safe}";'
-                ).resolve()
-                tx.query(
-                    f'match $s isa section, has section_id "{sid_safe}"; '
-                    f'$x isa sentence, has l3_id "{l3_safe}"; '
-                    "insert (container: $s, contained: $x) isa contains;"
-                ).resolve()
-
-                for kw in _extract_keywords(body_safe):
-                    kw_id = _keyword_machine_id(kw)
-                    tx.query(
-                        f"insert $k isa keyword, has keyword_machine_id {kw_id};"
-                    ).resolve()
-                    tx.query(
-                        f'match $x isa sentence, has l3_id "{l3_safe}"; '
-                        f"$k isa keyword, has keyword_machine_id {kw_id}; "
-                        "insert (source: $x, target: $k) isa mentions;"
-                    ).resolve()
-            tx.commit()
-    finally:
-        driver.close()
-    return True
 
 
-def _fetch_l3_sentences_from_postgres(doc_id: str) -> list[dict]:
-    """
-    Optional: fetch L3 rows from Postgres for TypeDB. Only rows under the revision head
-    (documents.current_l1_id, or latest knowledge_l1 by created_at) are returned.
-    doc_id is documents.id (UUID string) or a numeric machine_id string (legacy).
-    """
-    import os
-    import uuid as uuid_mod
+def _fetch_l2_l3_rows(l1_id: str) -> list[dict]:
+    """Fetch L2+L3 rows from PostgreSQL for a given L1 UUID."""
+    import psycopg
 
     host = os.environ.get("POSTGRES_HOST", "")
     user = os.environ.get("POSTGRES_USER", "")
     if not host or not user:
         return []
-    try:
-        import psycopg
-    except Exception:
-        return []
 
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    password = os.environ.get("POSTGRES_PASSWORD", "")
-    db = os.environ.get("POSTGRES_DB", "gopedia")
-    conninfo = f"host={host} port={port} user={user} password={password} dbname={db} sslmode=disable"
-
+    conninfo = (
+        f"host={host} port={os.environ.get('POSTGRES_PORT', '5432')} "
+        f"user={user} password={os.environ.get('POSTGRES_PASSWORD', '')} "
+        f"dbname={os.environ.get('POSTGRES_DB', 'gopedia')} sslmode=disable"
+    )
     rows: list[dict] = []
     with psycopg.connect(conninfo) as conn:
         with conn.cursor() as cur:
-            try:
-                uuid_mod.UUID(doc_id)
-                where_sql = "k1.document_id = %s::uuid"
-                param = doc_id
-            except ValueError:
-                where_sql = "d.machine_id = %s"
-                param = int(doc_id)
-
             cur.execute(
-                f"""
-                SELECT l3.id::text AS l3_id, l3.content AS content, l2.section_id AS section_id
-                  FROM documents d
-                  JOIN knowledge_l1 k1 ON k1.document_id = d.id
-                    AND k1.id = COALESCE(
-                      d.current_l1_id,
-                      (
-                        SELECT k2.id FROM knowledge_l1 k2
-                         WHERE k2.document_id = d.id
-                         ORDER BY k2.created_at DESC NULLS LAST
-                         LIMIT 1
-                      )
-                    )
-                  JOIN knowledge_l2 l2 ON l2.l1_id = k1.id
-                  JOIN knowledge_l3 l3 ON l3.l2_id = l2.id
-                 WHERE {where_sql}
-                 ORDER BY l3.sort_order, l3.created_at
+                """
+                SELECT
+                  l2.id::text   AS l2_id,
+                  l2.section_id AS section_id,
+                  l3.id::text   AS l3_id
+                FROM knowledge_l2 l2
+                JOIN knowledge_l3 l3 ON l3.l2_id = l2.id
+                WHERE l2.l1_id = %s::uuid
+                ORDER BY l2.sort_order, l3.sort_order
                 """,
-                (param,),
+                (l1_id,),
             )
-            for (l3_id, content, section_id) in cur.fetchall():
+            for (l2_id, section_id, l3_id) in cur.fetchall():
                 rows.append(
                     {
-                        "l3_id": l3_id,
-                        "content": content or "",
-                        "section_id": section_id or "",
+                        "l2_id": str(l2_id),
+                        "section_id": str(section_id or ""),
+                        "l3_id": str(l3_id),
                     }
                 )
     return rows
 
 
-def _extract_keywords(text: str) -> list[str]:
-    matches = KEYWORD_RE.findall((text or "").lower())
-    out: list[str] = []
-    seen: set[str] = set()
-    for m in matches:
-        if len(m) < 4:
-            continue
-        if m in seen:
-            continue
-        seen.add(m)
-        out.append(m)
-        if len(out) >= 8:
-            break
-    return out
+def _mark_synced(l1_id: str) -> None:
+    """Update knowledge_l1.typedb_synced_at to now(). Best-effort, never raises."""
+    try:
+        import psycopg
+
+        host = os.environ.get("POSTGRES_HOST", "")
+        user = os.environ.get("POSTGRES_USER", "")
+        if not host or not user:
+            return
+        conninfo = (
+            f"host={host} port={os.environ.get('POSTGRES_PORT', '5432')} "
+            f"user={user} password={os.environ.get('POSTGRES_PASSWORD', '')} "
+            f"dbname={os.environ.get('POSTGRES_DB', 'gopedia')} sslmode=disable"
+        )
+        with psycopg.connect(conninfo) as conn:
+            conn.execute(
+                "UPDATE knowledge_l1 SET typedb_synced_at = now() WHERE id = %s::uuid",
+                (l1_id,),
+            )
+            conn.commit()
+    except Exception:
+        pass
 
 
-def _keyword_machine_id(keyword: str) -> int:
-    import hashlib
+def sync_document_to_typedb(
+    l1_id: str,
+    project_id: str,
+    source_type: str = "md",
+    *,
+    typedb_host: str = "",
+    typedb_port: str = "1729",
+    typedb_database: str = "gopedia",
+) -> bool:
+    """Insert one file (L1) with its sections (L2) and chunks (L3) into TypeDB.
 
-    kw = (keyword or "").strip().lower()
-    h = hashlib.sha256(("kw:" + kw).encode("utf-8")).digest()
-    # TypeDB `integer` is signed; keep within signed 64-bit range.
-    u = int.from_bytes(h[:8], byteorder="big", signed=False)
-    max_i64 = (2**63) - 1
-    return int(u % max_i64)
+    Hierarchy inserted:  file → section → chunk  via `contains` relation.
+    Bridge attributes:   file.l1_id, section.l2_id, chunk.l3_id  (PG UUIDs).
+
+    Returns True on success.
+    """
+    if not typedb_database:
+        typedb_database = os.environ.get("TYPEDB_DATABASE", "gopedia")
+
+    l2_l3_rows = _fetch_l2_l3_rows(l1_id)
+    l1_safe = _escape(str(l1_id)[:256])
+    proj_safe = _escape(str(project_id)[:64])
+    src_safe = _escape((source_type or "md")[:64])
+
+    from typedb.driver import TransactionType  # imported here to allow mocking in tests
+    driver = _typedb_driver(typedb_host, typedb_port)
+    try:
+        with driver.transaction(typedb_database, TransactionType.WRITE) as tx:
+            # Insert file entity
+            tx.query(
+                f'insert $f isa file, has l1_id "{l1_safe}", '
+                f'has source_type "{src_safe}", has project_id "{proj_safe}";'
+            ).resolve()
+
+            # Insert sections (L2) + file→section contains
+            seen_l2: set[str] = set()
+            for row in l2_l3_rows:
+                l2_id = row["l2_id"]
+                if l2_id in seen_l2:
+                    continue
+                seen_l2.add(l2_id)
+                l2_safe = _escape(l2_id[:256])
+                sid_safe = _escape(row["section_id"][:256])
+                tx.query(
+                    f'insert $s isa section, has l2_id "{l2_safe}", '
+                    f'has section_id "{sid_safe}", has toc_level 1;'
+                ).resolve()
+                tx.query(
+                    f'match $f isa file, has l1_id "{l1_safe}"; '
+                    f'$s isa section, has l2_id "{l2_safe}"; '
+                    "insert (container: $f, contained: $s) isa contains;"
+                ).resolve()
+
+            # Insert chunks (L3) + section→chunk contains
+            for row in l2_l3_rows:
+                l2_safe = _escape(row["l2_id"][:256])
+                l3_safe = _escape(row["l3_id"][:256])
+                tx.query(
+                    f'insert $c isa chunk, has l3_id "{l3_safe}";'
+                ).resolve()
+                tx.query(
+                    f'match $s isa section, has l2_id "{l2_safe}"; '
+                    f'$c isa chunk, has l3_id "{l3_safe}"; '
+                    "insert (container: $s, contained: $c) isa contains;"
+                ).resolve()
+
+            tx.commit()
+    finally:
+        driver.close()
+
+    _mark_synced(l1_id)
+    return True
+
+
+def sync_directory_tree_to_typedb(
+    project_id: int | str,
+    l1_rows: list[dict],
+    *,
+    typedb_host: str = "",
+    typedb_port: str = "1729",
+    typedb_database: str = "gopedia",
+) -> bool:
+    """Build directory → file `contains` relations in TypeDB from L1 node rows.
+
+    l1_rows: output of tree.build_project_l1_tree() (nested) or
+             tree.fetch_project_l1_nodes() (flat).
+    Each row must have: id (l1_id UUID str), title (file path / name),
+    optionally parent_id and children.
+
+    Directory path is derived from the title treated as a POSIX path
+    (dirname). If title has no parent dir component, "/" is used.
+
+    Returns True on success.
+    """
+    import posixpath
+
+    if not typedb_database:
+        typedb_database = os.environ.get("TYPEDB_DATABASE", "gopedia")
+
+    proj_safe = _escape(str(project_id)[:64])
+
+    # Flatten nested tree if needed
+    flat: list[dict] = []
+
+    def _flatten(nodes: list[dict]) -> None:
+        for n in nodes:
+            flat.append(n)
+            if n.get("children"):
+                _flatten(n["children"])
+
+    if l1_rows and "children" in l1_rows[0]:
+        _flatten(l1_rows)
+    else:
+        flat.extend(l1_rows)
+
+    if not flat:
+        return True
+
+    from typedb.driver import TransactionType  # imported here to allow mocking in tests
+    driver = _typedb_driver(typedb_host, typedb_port)
+    try:
+        with driver.transaction(typedb_database, TransactionType.WRITE) as tx:
+            seen_dirs: set[str] = set()
+
+            for node in flat:
+                l1_id = str(node.get("id", ""))
+                title = str(node.get("title", ""))
+                if not l1_id:
+                    continue
+
+                dir_path = posixpath.dirname(title.replace("\\", "/")) or "/"
+                l1_safe = _escape(l1_id[:256])
+                dir_safe = _escape(dir_path[:512])
+
+                # Upsert directory once per (project, dir_path) pair
+                dir_key = f"{proj_safe}:{dir_safe}"
+                if dir_key not in seen_dirs:
+                    seen_dirs.add(dir_key)
+                    tx.query(
+                        f'insert $d isa directory, has dir_path "{dir_safe}", '
+                        f'has project_id "{proj_safe}";'
+                    ).resolve()
+
+                # directory → file contains
+                tx.query(
+                    f'match $d isa directory, has dir_path "{dir_safe}", '
+                    f'has project_id "{proj_safe}"; '
+                    f'$f isa file, has l1_id "{l1_safe}"; '
+                    "insert (container: $d, contained: $f) isa contains;"
+                ).resolve()
+
+            tx.commit()
+    finally:
+        driver.close()
+
+    return True
