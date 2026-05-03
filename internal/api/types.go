@@ -56,6 +56,21 @@ type RestoreResponse struct {
 	RequestID string          `json:"request_id,omitempty"`
 }
 
+// IndexResetRequest is the JSON body for POST /api/index/reset.
+type IndexResetRequest struct {
+	ProjectID *int64 `json:"project_id,omitempty"`
+	DryRun    bool   `json:"dry_run"`
+}
+
+// IndexResetResponse is the JSON body returned by POST /api/index/reset.
+type IndexResetResponse struct {
+	Result    json.RawMessage `json:"result,omitempty"`
+	Stderr    string          `json:"stderr,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	Failure   *APIError       `json:"failure,omitempty"`
+	RequestID string          `json:"request_id,omitempty"`
+}
+
 // IngestJobRequest is the body for POST /api/ingest/jobs.
 type IngestJobRequest struct {
 	Path      string `json:"path"`

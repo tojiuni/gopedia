@@ -379,6 +379,66 @@ func Register(s *fuego.Server, py *runner.Runner) {
 		fuego.OptionQuery("q", "Question text", fuego.ParamString(), fuego.ParamRequired()),
 	)
 
+	fuego.Post(api, "/index/reset", func(c fuego.ContextWithBody[IndexResetRequest]) (IndexResetResponse, error) {
+		reqID := newRequestID(c)
+		started := time.Now()
+		body, err := c.Body()
+		if err != nil {
+			return IndexResetResponse{Error: err.Error(), Failure: newAPIError("BAD_BODY", err.Error(), false, reqID, nil), RequestID: reqID}, nil
+		}
+		slog.Info(
+			"api request",
+			"event", "api.index_reset.request",
+			"request_id", reqID,
+			"method", "POST",
+			"path", "/api/index/reset",
+			"dry_run", body.DryRun,
+			"project_id", body.ProjectID,
+		)
+		args := []string{}
+		if body.DryRun {
+			args = append(args, "--dry-run")
+		}
+		if body.ProjectID != nil {
+			args = append(args, "--project-id", strconv.FormatInt(*body.ProjectID, 10))
+		}
+		ctx, cancel := context.WithTimeout(c, 10*time.Minute)
+		defer cancel()
+		out, stderr, err := py.RunModule(ctx, "flows.xylem_flow.index_reset", args...)
+		resp := IndexResetResponse{
+			Stderr:    string(stderr),
+			RequestID: reqID,
+		}
+		if err != nil {
+			resp.Error = err.Error()
+			resp.Failure = newAPIError("PYTHON_INDEX_RESET_FAILED", err.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+			slog.Warn("index reset subprocess failed", "err", err, "stderr", resp.Stderr, "request_id", reqID)
+			slog.Info("api request", "event", "api.index_reset.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
+			return resp, nil
+		}
+		var raw map[string]any
+		if uerr := json.Unmarshal(out, &raw); uerr != nil {
+			resp.Error = uerr.Error()
+			resp.Failure = newAPIError("INDEX_RESET_JSON_PARSE", uerr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+			slog.Warn("index reset json parse failed", "err", uerr, "request_id", reqID)
+			slog.Info("api request", "event", "api.index_reset.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
+			return resp, nil
+		}
+		encoded, merr := json.Marshal(raw)
+		if merr != nil {
+			resp.Error = merr.Error()
+			resp.Failure = newAPIError("INDEX_RESET_RESULT_ENCODE", merr.Error(), false, reqID, map[string]any{"stderr": string(stderr)})
+			slog.Warn("index reset result encode failed", "err", merr, "request_id", reqID)
+			slog.Info("api request", "event", "api.index_reset.failed", "request_id", reqID, "status", 200, "latency_ms", time.Since(started).Milliseconds())
+			return resp, nil
+		}
+		resp.Result = encoded
+		slog.Info("api request", "event", "api.index_reset.success", "request_id", reqID, "status", 200, "dry_run", body.DryRun, "latency_ms", time.Since(started).Milliseconds())
+		return resp, nil
+	},
+		fuego.OptionSummary("Reset PostgreSQL tables and Qdrant points (supports dry-run and project-scoped delete)"),
+	)
+
 	fuego.Post(api, "/ingest", func(c fuego.ContextWithBody[IngestRequest]) (IngestResponse, error) {
 		reqID := newRequestID(c)
 		started := time.Now()
