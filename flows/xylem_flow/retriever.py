@@ -45,6 +45,45 @@ WHERE id = ANY(%s::uuid[])
 _cross_encoder_cache: Dict[str, Any] = {}
 
 
+def _rewrite_query(query: str) -> str:
+    """Rewrite Korean colloquial query into technical terms using LLM.
+
+    Enabled when GOPEDIA_QUERY_REWRITE=true.  Falls back to original query on
+    any error or when the rewrite returns an empty string.
+    """
+    if os.environ.get("GOPEDIA_QUERY_REWRITE", "false").lower() not in ("true", "1"):
+        return query
+
+    ollama_url = os.environ.get("OLLAMA_CHAT_URL", "http://localhost:11434")
+    ollama_model = os.environ.get("OLLAMA_CHAT_MODEL", "gemma4:26b")
+    import json as _json
+    import urllib.request
+
+    prompt = (
+        "You are a technical query rewriter. "
+        "Rewrite the following query into concise English technical terms "
+        "suitable for semantic search in a technical document index. "
+        "Output ONLY the rewritten query, no explanation.\n\nQuery: "
+        + query
+    )
+    payload = _json.dumps(
+        {"model": ollama_model, "prompt": prompt, "stream": False}
+    ).encode()
+    req = urllib.request.Request(
+        f"{ollama_url.rstrip('/')}/api/generate",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = _json.loads(resp.read().decode())
+            rewritten = (result.get("response") or "").strip()
+            return rewritten if rewritten else query
+    except Exception:
+        return query
+
+
 def _get_cross_encoder(model_name: str) -> Any:
     if model_name not in _cross_encoder_cache:
         from sentence_transformers import CrossEncoder
@@ -315,6 +354,7 @@ def retrieve_and_enrich(
     reranker_model: Optional[str] = None,
 ) -> List[dict]:
     """If ``limit`` is passed (legacy), it overrides ``final_limit``."""
+    query = _rewrite_query(query)
     from flows.xylem_flow.project_config import (
         fetch_project_source_metadata,
         resolve_retrieval_settings,
