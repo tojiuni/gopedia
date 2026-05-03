@@ -31,9 +31,18 @@ from property.root_props.markdown_loader import (
 from property.root_props.project_metadata import build_register_project_metadata
 from property.root_props.run_code import _CODE_EXTENSIONS, ingest_code_file
 try:
-    from core.ontology_so import sync_document_to_typedb
+    from core.ontology_so.typedb_sync import (
+        sync_directory_tree_to_typedb,
+        sync_document_to_typedb,
+    )
 except ImportError:
     sync_document_to_typedb = None  # TypeDB sync optional if driver missing
+    sync_directory_tree_to_typedb = None
+
+try:
+    from flows.xylem_flow.tree import fetch_project_l1_nodes
+except ImportError:
+    fetch_project_l1_nodes = None
 
 # Env: TYPEDB_HOST (optional) — when set, syncs each ingested doc to TypeDB.
 
@@ -129,6 +138,29 @@ def main() -> None:
             ok = finalize_project(channel, project_id)
             if ok:
                 print(f"[finalize] project content_hash stored (project_id={project_id})")
+
+        # Sync directory tree to TypeDB after all files ingested (TYPEDB_HOST gated).
+        if (
+            sync_directory_tree_to_typedb is not None
+            and fetch_project_l1_nodes is not None
+            and os.environ.get("TYPEDB_HOST")
+            and project_id
+        ):
+            try:
+                import psycopg
+                pg_conninfo = (
+                    f"host={os.environ.get('POSTGRES_HOST', '')} "
+                    f"port={os.environ.get('POSTGRES_PORT', '5432')} "
+                    f"user={os.environ.get('POSTGRES_USER', '')} "
+                    f"password={os.environ.get('POSTGRES_PASSWORD', '')} "
+                    f"dbname={os.environ.get('POSTGRES_DB', 'gopedia')} sslmode=disable"
+                )
+                with psycopg.connect(pg_conninfo) as pg_conn:
+                    l1_rows = fetch_project_l1_nodes(pg_conn, project_id)
+                sync_directory_tree_to_typedb(project_id, l1_rows)
+                print(f"[typedb] directory tree synced ({len(l1_rows)} nodes, project_id={project_id})")
+            except Exception as e:
+                print(f"[typedb] directory tree sync failed: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

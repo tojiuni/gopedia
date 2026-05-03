@@ -352,11 +352,20 @@ def retrieve_and_enrich(
     embedding_model: Optional[str] = None,
     use_reranker: Optional[bool] = None,
     reranker_model: Optional[str] = None,
+    use_graph_context: Optional[bool] = None,
 ) -> List[dict]:
-    """If ``limit`` is passed (legacy), it overrides ``final_limit``."""
+    """If ``limit`` is passed (legacy), it overrides ``final_limit``.
+
+    When ``use_graph_context`` is None, it is enabled automatically when
+    TYPEDB_HOST is set in the environment (zero-cost skip otherwise).
+    Graph-expanded results are appended after Qdrant results and carry
+    ``source: "graph_expansion"`` to distinguish their origin.
+    """
     query = _rewrite_query(query)
     if use_reranker is None:
         use_reranker = os.environ.get("GOPEDIA_RERANKER_ENABLED", "false").lower() in ("true", "1")
+    if use_graph_context is None:
+        use_graph_context = bool(os.environ.get("TYPEDB_HOST", ""))
     from flows.xylem_flow.project_config import (
         fetch_project_source_metadata,
         resolve_retrieval_settings,
@@ -408,6 +417,7 @@ def retrieve_and_enrich(
     rows = rows[:final_limit]
 
     out: List[dict] = []
+    seen_l1_ids: List[str] = []
     for h, lid in rows:
         ctx = fetch_rich_context(
             conn,
@@ -433,5 +443,54 @@ def retrieve_and_enrich(
             ctx["doc_id"] = pd.get("doc_id")
         if pd.get("l2_id") and not ctx.get("l2_id"):
             ctx["l2_id"] = str(pd.get("l2_id"))
+        if ctx.get("l1_id"):
+            seen_l1_ids.append(ctx["l1_id"])
         out.append(ctx)
+
+    # ── Graph expansion via TypeDB ────────────────────────────────────────────
+    # When TYPEDB_HOST is set, fetch sibling files from the same directory and
+    # append their representative L3 chunk (top section) as extra context.
+    # Skipped entirely when use_graph_context is False or TYPEDB_HOST is unset.
+    if use_graph_context and seen_l1_ids and project_id is not None:
+        try:
+            from flows.xylem_flow.graph_context import get_related_l1_ids
+            related_l1_ids = get_related_l1_ids(seen_l1_ids, project_id)
+            already_l1 = {ctx.get("l1_id") for ctx in out}
+            for rel_l1_id in related_l1_ids:
+                if rel_l1_id in already_l1:
+                    continue
+                # Fetch the top L3 chunk for this related file (lowest sort_order)
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT l3.id::text
+                        FROM knowledge_l3 l3
+                        JOIN knowledge_l2 l2 ON l3.l2_id = l2.id
+                        WHERE l2.l1_id = %s::uuid
+                        ORDER BY l2.sort_order, l3.sort_order
+                        LIMIT 1
+                        """,
+                        (rel_l1_id,),
+                    )
+                    row = cur.fetchone()
+                if not row:
+                    continue
+                rel_l3_id = row[0]
+                rel_ctx = fetch_rich_context(
+                    conn,
+                    rel_l3_id,
+                    neighbor_window=neighbor_window,
+                    level=context_level,
+                    max_tokens=max_tokens,
+                    embedding_model=resolved.embedding_model,
+                )
+                if not rel_ctx:
+                    continue
+                rel_ctx["source"] = "graph_expansion"
+                rel_ctx["qdrant_score"] = None
+                already_l1.add(rel_l1_id)
+                out.append(rel_ctx)
+        except Exception:
+            pass  # graph expansion is best-effort; never break retrieval
+
     return out

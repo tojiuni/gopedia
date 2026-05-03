@@ -1,45 +1,66 @@
 define
-  attribute doc_id, value string;
+  # ── Bridge attributes (PG UUID strings) ──────────────────────────────────
+  attribute l1_id, value string;
+  attribute l2_id, value string;
+  attribute l3_id, value string;
+
+  # ── Path / identity attributes ────────────────────────────────────────────
+  attribute dir_path, value string;
   attribute section_id, value string;
   attribute toc_level, value integer;
-  attribute l3_id, value string;
   attribute keyword_machine_id, value integer;
   attribute source_type, value string;
   attribute project_id, value string;
 
-  entity document,
-    owns doc_id,
+  # ── Entities ──────────────────────────────────────────────────────────────
+
+  # directory — synthesised from knowledge_l1 parent_id hierarchy or
+  # path prefix of file titles. project_id scopes the tree per project.
+  entity directory,
+    owns dir_path,
+    owns project_id;
+
+  # file — replaces old `document` entity; owns l1_id as PG UUID bridge.
+  entity file,
+    owns l1_id,
     owns source_type,
     owns project_id;
 
+  # section — mirrors knowledge_l2; owns l2_id as PG UUID bridge.
   entity section,
+    owns l2_id,
     owns section_id,
     owns toc_level;
 
-  entity sentence,
+  # chunk — mirrors knowledge_l3 (atomic content); owns l3_id as PG UUID bridge.
+  entity chunk,
     owns l3_id;
 
+  # keyword (unchanged)
   entity keyword,
     owns keyword_machine_id;
 
-  relation composition,
-    relates parent,
-    relates child;
+  # ── Relations ─────────────────────────────────────────────────────────────
 
-  document plays composition:parent;
-  section plays composition:child,
-    plays composition:parent;
-
+  # contains — unified hierarchy:
+  #   directory → file
+  #   file      → section
+  #   section   → chunk
   relation contains,
     relates container,
     relates contained;
 
-  section plays contains:container;
-  sentence plays contains:contained;
+  directory plays contains:container;
+  file      plays contains:container;
+  file      plays contains:contained;
+  section   plays contains:container;
+  section   plays contains:contained;
+  chunk     plays contains:contained;
 
+  # mentions — chunk → keyword
   relation mentions,
     relates source,
     relates target;
 
-  sentence plays mentions:source;
+  chunk   plays mentions:source;
   keyword plays mentions:target;

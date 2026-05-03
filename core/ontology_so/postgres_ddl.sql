@@ -63,9 +63,15 @@ CREATE TABLE IF NOT EXISTS knowledge_l1 (
   modified_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- typedb_synced_at: set by typedb_sync.py after successful TypeDB sync.
+-- NULL means not yet synced; used for async retry tracking.
+ALTER TABLE knowledge_l1
+  ADD COLUMN IF NOT EXISTS typedb_synced_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_knowledge_l1_document_id ON knowledge_l1 (document_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_l1_project_id ON knowledge_l1 (project_id) WHERE project_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_knowledge_l1_source_type ON knowledge_l1 (source_type);
+CREATE INDEX IF NOT EXISTS idx_knowledge_l1_typedb_synced_at ON knowledge_l1 (typedb_synced_at) WHERE typedb_synced_at IS NULL;
 
 -- L2: sections / headers under L1.
 CREATE TABLE IF NOT EXISTS knowledge_l2 (
