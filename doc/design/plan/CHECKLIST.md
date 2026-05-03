@@ -1,43 +1,39 @@
 # 미완성 항목 체크리스트
 
-> 생성일: 2026-05-02  
-> 기준: `doc/IMPROVEMENTS.md` + `doc/design/plan/TODO.md`
+> 최종 업데이트: 2026-05-03
 
 ---
 
-## P2 — 다음 릴리즈 대상
+## 완료 항목
 
-| # | 항목 | 브랜치 | 상태 |
-|---|------|--------|------|
-| IMP-13 | Query Rewriting — 한국어 구어체 → 기술 용어 변환 | `wt/imp-13` | 🔲 진행 중 |
-| IMP-12 | Python 상주 gRPC 서비스 전환 (subprocess 제거) | — | ⏸ 보류 (대규모 아키텍처) |
+| # | 항목 | PR | 상태 |
+|---|------|-----|------|
+| TODO-1 | `tree.py` 복원 (L1 트리 조회) | #33 | ✅ 병합 완료 |
+| TODO-2 | `POST /api/index/reset` | #34 | ✅ 병합 완료 |
+| IMP-13 | Query Rewriting (GOPEDIA_QUERY_REWRITE) | #35 | ✅ 병합 완료 |
+| IMP-15 | Reranker env-based default | #36 | ✅ 병합 완료 |
 
-## P3 — 중장기
+---
 
-| # | 항목 | 브랜치 | 상태 |
-|---|------|--------|------|
-| IMP-15 | Cross-Encoder Reranker 기본 활성화 | `wt/imp-15` | 🔲 진행 중 |
-| IMP-14 | L2 summary Qdrant 인덱싱 (hybrid 검색) | — | ⏸ 보류 (재인덱싱 필요) |
+## 진행 예정 — GraphDB RAG 강화
 
-## TODO — 기능 복원 / 신규
+> **선행 조건**: gardener_gopedia 품질 테스트로 베이스라인 측정 후 시작
+> Telegram `"gopedia 품질 테스트 해줘"` → run_id 기록 → `doc/rag-test-reports/` 저장
 
-| # | 항목 | 브랜치 | 상태 |
-|---|------|--------|------|
-| TODO-1 | `flows/xylem_flow/tree.py` 복원 (프로젝트 L1 트리 조회) | `wt/feat-tree` | 🔲 진행 중 |
-| TODO-2 | 인덱스 초기화 API `POST /api/index/reset` | `wt/feat-index-reset` | 🔲 진행 중 |
+| Phase | 항목 | 핵심 파일 | 상태 |
+|-------|------|----------|------|
+| 1 | TypeDB 스키마 확장 + K8s 활성화 | `typedb_schema.typeql`, `typedb.yaml` | 🔲 대기 |
+| 2 | Ingest-time 동기화 (`sync_directory_tree`) | `typedb_sync.py`, `run.py` | 🔲 대기 |
+| 3 | `graph_context.py` 신규 모듈 | `graph_context.py` | 🔲 대기 |
+| 4 | `retriever.py` graph expansion 통합 | `retriever.py` | 🔲 대기 |
 
-## 보류 항목 (별도 스프린트)
+상세 스펙 → `doc/design/plan/TODO.md` GraphDB 섹션 참고
+
+---
+
+## 보류 항목
 
 | # | 항목 | 이유 |
 |---|------|------|
-| IMP-12 | Python 상주 gRPC 서비스 | proto 설계 + 대규모 리팩터 필요 |
+| IMP-12 | Python 상주 gRPC 서비스 | proto 설계 + 대규모 리팩터 |
 | IMP-14 | L2 Qdrant 인덱싱 | 전체 re-ingest 필요 |
-
----
-
-## 병합 순서
-
-1. `wt/feat-tree` (독립)
-2. `wt/feat-index-reset` (독립)
-3. `wt/imp-13` (retriever.py)
-4. `wt/imp-15` (retriever.py 충돌 → IMP-13 머지 후 rebase)

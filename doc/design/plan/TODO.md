@@ -1,52 +1,64 @@
 # TODO
 
-## tree.py — 프로젝트 지식 트리 조회 모듈
+---
 
-**배경**
+## GraphDB (TypeDB) RAG 강화 — 4단계 구현
 
-`flows/xylem_flow/tree.py`는 knowledge_l1 노드를 트리 구조로 조회하는 모듈로,
-프로젝트 단위 문서 탐색 UI(뷰어/탐색기) 구현을 위한 scaffolding이었으나
-실제 호출처가 없어 `refactor/cleanup-unused-code` 브랜치에서 제거됨.
+> **선행 조건**: gardener_gopedia로 현재 파이프라인 품질 베이스라인 측정 및 기록 후 작업 시작.
+> 측정: Telegram `"gopedia 품질 테스트 해줘"` → run_id 기록 → `doc/rag-test-reports/` 저장
 
-**구현 예정 기능**
+### Phase 1 — TypeDB 스키마 확장 + K8s 활성화
 
-- `fetch_project_l1_nodes(conn, project_id)` — 특정 프로젝트의 L1 노드 목록을 flat list로 조회 (id, parent_id, title, source_type, document_id)
-- `build_project_l1_tree(conn, project_id)` — parent_id 관계를 재귀적으로 중첩 트리로 변환, 루트 노드 배열 반환
-- `get_project_tree_for_viewer(conn, project_id)` — API 응답용 JSON 래퍼 (`{ project_id, tree: [...] }`)
+- [ ] `core/ontology_so/typedb_schema.typeql` 수정
+  - `directory` entity 추가 (`dir_path`, `project_id` attribute)
+  - `file` entity: 기존 `document` rename + `l1_id` (PG UUID 브리지) 추가
+  - `section` entity: `l2_id` 브리지 추가
+  - `chunk` entity 신규 (`l3_id` 브리지)
+  - `contains` relation 통합 (`directory→file`, `file→section`, `section→chunk`)
+- [ ] `deploy/k8s/typedb.yaml` 신규 (TypeDB StatefulSet + PVC 20Gi + Service)
+- [ ] `deploy/k8s/gopedia-svc.yaml` TypeDB env 주석 해제
 
-**활용 시나리오**
+### Phase 2 — Ingest-time TypeDB 동기화 확장
 
-- 지식 그래프 탐색 UI (문서 목차 트리 뷰어)
-- `/api/tree` 엔드포인트 추가 시 즉시 연결 가능
-- 멀티 프로젝트 문서 구조 시각화
+- [ ] `core/ontology_so/typedb_sync.py` 수정
+  - `sync_document_to_typedb()`: `document` → `file` entity, `l1_id`/`l2_id` 삽입
+  - `sync_directory_tree_to_typedb(project_id, l1_rows)` 신규
+    - `tree.py`의 `build_project_l1_tree()` 출력을 입력으로 받아 경로 파싱
+    - `directory → file contains` 관계 bulk insert
+- [ ] `property/root_props/run.py`: ingest 완료 후 `sync_directory_tree_to_typedb()` 호출
+- [ ] `core/ontology_so/postgres_ddl.sql`: `knowledge_l1.typedb_synced_at TIMESTAMP` 추가 (비동기 재시도 추적)
 
-**참고**
+### Phase 3 — graph_context.py 신규 모듈
 
-- DB 스키마: `knowledge_l1` 테이블 (`id`, `parent_id`, `title`, `source_type`, `document_id`, `project_id`)
-- 복원 시 `flows/xylem_flow/__init__.py` `__all__`에 재추가 필요
+- [ ] `flows/xylem_flow/graph_context.py` 신규 생성
+  - `get_related_l1_ids(hit_l1_ids, project_id, depth=1) -> list[str]`
+  - TypeDB `contains` 탐색: hit file → parent directory → sibling files l1_id 반환
+  - TypeDB 미연결 시 빈 리스트 반환 (graceful degradation 필수)
+
+### Phase 4 — retriever.py 통합
+
+- [ ] `flows/xylem_flow/retriever.py` 수정
+  - `retrieve_and_enrich()` 내 Qdrant 결과 후 graph expansion 블록 삽입
+  - `TYPEDB_HOST` 설정 시에만 활성화 (zero-cost skip)
+  - `use_graph_context: Optional[bool] = None` 파라미터 추가
+  - `source: "graph_expansion"` 필드로 graph 기원 결과 구분
+- [ ] gardener_gopedia로 Phase 4 적용 후 재측정 → 베이스라인 대비 Recall@5 비교
 
 ---
 
-## 인덱스 초기화 API — `DELETE /api/index` (또는 리셋 스크립트)
+## tree.py — 프로젝트 지식 트리 조회 모듈 ✅ 완료 (PR #33)
 
-**배경**
+`flows/xylem_flow/tree.py` 복원 완료.
+- `fetch_project_l1_nodes`, `build_project_l1_tree`, `get_project_tree_for_viewer`
+- GraphDB Phase 2에서 `sync_directory_tree_to_typedb()` 입력으로 활용 예정
 
-gardener_gopedia 평가 파이프라인(gopedia-eval-pipeline 플랜)에서 클린 re-ingest 시
-PostgreSQL + Qdrant 인덱스를 초기화할 메커니즘이 필요하나, 현재 Gopedia에
-삭제/초기화 API가 없음. 평가 당시 직접 SQL + Qdrant API로 우회 처리함.
+---
 
-**구현 예정 내용**
+## 인덱스 초기화 API ✅ 완료 (PR #34)
 
-- `DELETE /api/index` 또는 `POST /api/index/reset` 엔드포인트 추가
-- 대상 테이블 (외래키 순서 고려): `keyword_so` → `knowledge_l3` → `knowledge_l2` → `knowledge_l1` → `documents` → `projects`
-- Qdrant collection points 삭제 (collection 자체 재생성 또는 `DELETE /collections/{name}/points`)
-- dry-run 모드 지원 ("삭제 예정 N건" 확인 후 실행)
-- project_id 단위 부분 삭제 지원 (선택적)
-
-**참고**
-
-- 스키마: `core/ontology_so/postgres_ddl.sql`
-- 기존 리셋 스크립트: `scripts/reset_rhizome_docker.py`
+`POST /api/index/reset` 구현 완료.
+- `flows/xylem_flow/index_reset.py`: FK 순서 준수 삭제 + Qdrant points 삭제
+- dry-run, project_id 단위 부분 삭제 지원
 
 ---
 
@@ -74,16 +86,14 @@ nDCG@10, P@3 메트릭 측정. 현재 메트릭은 기준치 충족 (T14 SKIPPED
 - 현재: Qdrant 벡터 검색 + neighbor_window 기반 컨텍스트 확장
 - 후보: 하이브리드 검색 (벡터 + 키워드), 리랭킹 레이어 추가
 - 관련 파일: `flows/xylem_flow/retriever.py::retrieve_and_enrich()`
-- 파라미터: `candidate_limit`, `final_limit`, `neighbor_window`, `context_level`
 
-### 4. Cross-Encoder 로딩/실행 구조 최적화
-- 현재: 검색 요청마다 Python subprocess가 새로 실행되어 `flows/xylem_flow/retriever.py`의 `_get_cross_encoder()` 호출 시 무거운 Cross-Encoder 모델을 반복 로드
-- 문제: 모델 디스크 로딩/초기화 비용이 누적되어 검색 레이턴시 오버헤드 발생
-- 후보: 모델을 메모리에 상주시켜 재사용하는 별도 서비스(gRPC 등)로 분리
-- 기대 효과: warm process 기반 재사용으로 리랭킹 지연 감소 및 처리량 안정화
+### 4. Cross-Encoder 로딩/실행 구조 최적화 (IMP-12 선행 필요)
+- 현재: 요청마다 subprocess spawn → Cross-Encoder 모델 반복 로드
+- 후보: Python 상주 gRPC 서비스로 분리 (IMP-12)
+- 기대 효과: warm process 재사용으로 리랭킹 레이턴시 감소
 
 **진단 방법**
 
-- Gardener eval 파이프라인으로 Recall@5 < 0.5 이면 개선 필요
-- per-query 분석으로 실패 쿼리 패턴 파악 후 위 후보 중 택일
+- gardener_gopedia eval로 Recall@5 < 0.5 이면 개선 필요
+- per-query 분석으로 실패 패턴 파악 후 위 후보 중 택일
 - 한 번에 하나만 수정하고 재평가
