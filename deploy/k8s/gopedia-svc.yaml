@@ -109,11 +109,13 @@ spec:
               value: "http://ollama-generate.ai-assistant.svc:11434"
             - name: OLLAMA_CHAT_MODEL
               value: "gemma4:26b"
-            # ── Reranker (선택) ──────────────────────────────────────────────
-            # Cross-Encoder reranker 활성화. IMP-12(상주 서비스) 적용 전에는
-            # 요청당 모델 로딩 오버헤드(~400MB)가 발생하므로 기본 비활성.
-            # - name: GOPEDIA_RERANKER_ENABLED
-            #   value: "true"
+            # ── Reranker ─────────────────────────────────────────────────────
+            # BAAI/bge-reranker-v2-m3 — 다국어 최상급 cross-encoder.
+            # P3-B: P@3 개선 효과 측정 (v0.11.0)
+            - name: GOPEDIA_RERANKER_ENABLED
+              value: "true"
+            - name: GOPEDIA_RERANKER_MODEL
+              value: "BAAI/bge-reranker-v2-m3"
             # ── TypeDB ───────────────────────────────────────────────────────
             - name: TYPEDB_HOST
               value: "typedb.taxon.svc"
