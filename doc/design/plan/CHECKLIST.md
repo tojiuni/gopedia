@@ -49,13 +49,13 @@
 
 | # | 항목 | 접근 | 관련 저장소/파일 | re-ingest | 상태 |
 |---|------|------|----------------|-----------|------|
-| P3-A | gardener top-k 상세 API — rank-1/2/3 l3_id 반환 엔드포인트 추가 | 근본 진단 수단 | `gardener_gopedia` 저장소 | 불필요 | 🔲 대기 |
-| P3-B | Cross-Encoder 모델 업그레이드 — `ms-marco-MiniLM-L-12-v2` | 직접 원인 해결 | `retriever.py`, `gopedia-svc.yaml` | 불필요 | 🔲 대기 |
-| P3-C | 임베딩 모델 업그레이드 — `text-embedding-3-large` | 간접 효과 | `embedder/openai.go`, `retriever.py` | **필요** | 🔲 대기 |
-| P3-D | 하이브리드 검색 — Qdrant sparse(BM25) + dense | 간접 효과 | `retriever.py`, ingest 파이프라인 | **필요** | 🔲 대기 |
+| P3-A | gardener top-k 상세 API — `GET /runs/{id}/queries` 엔드포인트 추가 | 근본 진단 수단 | `gardener_gopedia` 저장소 | 불필요 | ✅ 구현 완료 (feat/p3a-topk-detail-api, PR 예정) |
+| P3-B | Cross-Encoder reranker 활성화 — `BAAI/bge-reranker-v2-m3` | 직접 원인 해결 시도 | `gopedia-svc.yaml` | 불필요 | ✅ 완료 (v0.11.0) — P@3 불변, 레이턴시 -512ms. secondary top-k 부재 확인 |
+| P3-C | 임베딩 모델 검토 — 현재 BGE-M3 이미 최상급 | 간접 효과 | `embedder/openai.go` | **필요** | ⚠️ 낮은 우선순위 |
+| P3-D | 하이브리드 검색 — Qdrant sparse(BM25) + dense | 간접 효과 | `retriever.py`, ingest 파이프라인 | **필요** | 🔲 P3-A 결과 확인 후 판단 |
 
-> **권장 순서**: P3-A(진단) → P3-B(즉시 효과) → P3-C/D(re-ingest 필요, 병행 가능)
-> P3-B는 re-ingest 없이 바로 gardener 재측정으로 효과 확인 가능.
+> **P3-A·B 결론**: secondary qrel이 top-k 후보 자체에 없음 확인. 재랭킹으로는 해결 불가.
+> **다음**: P3-A로 수집한 hit rank 데이터로 IMP-17(청킹) vs P3-D(하이브리드) 방향 결정.
 
 ---
 
