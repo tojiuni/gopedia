@@ -42,7 +42,11 @@
   - `TYPEDB_HOST` 설정 시에만 활성화 (zero-cost skip)
   - `use_graph_context: Optional[bool] = None` 파라미터 추가
   - `source: "graph_expansion"` 필드로 graph 기원 결과 구분
-- [ ] gardener_gopedia로 TypeDB K8s 배포 후 재측정 → 베이스라인 대비 Recall@5 비교
+- [x] gardener_gopedia로 TypeDB K8s 배포 후 재측정 → 베이스라인 대비 Recall@5 비교
+  - run_id: `991f499d-dd52-45ba-8ee0-86e226acb620` (2026-05-04)
+  - TypeDB 3.8.2, 167 L1 synced (file 167 / section 2,067 / chunk 6,786)
+  - Recall@5: 0.883 → **0.900** (+0.017 ✅), MRR@10 유지, P@3 소폭 하락(-0.022)
+  - 상세: `doc/rag-test-reports/v0.9.0_2026-05-04_graphdb-active.md`
 
 ---
 
