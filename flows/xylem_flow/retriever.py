@@ -50,18 +50,98 @@ _PG_FTS_SQL = """
 SELECT l3.id::text,
        ts_rank_cd(
            to_tsvector('simple', coalesce(l3.content, '')),
-           plainto_tsquery('simple', %s)
+           to_tsquery('simple', %s)
        ) AS fts_rank
 FROM knowledge_l3 l3
 JOIN knowledge_l2 l2 ON l3.l2_id = l2.id
 WHERE to_tsvector('simple', coalesce(l3.content, ''))
-      @@ plainto_tsquery('simple', %s)
+      @@ to_tsquery('simple', %s)
   {project_filter}
 ORDER BY fts_rank DESC
 LIMIT %s
 """
 
 _PG_FTS_PROJECT_FILTER = "AND l2.project_id = %s"
+
+# Tokens that are too short or too common to be useful as FTS terms.
+_FTS_STOPWORDS: frozenset = frozenset({"a", "an", "the", "of", "in", "on", "at", "to", "is", "or"})
+
+# Unicode Hangul block ranges used to detect Korean characters.
+_HANGUL_RANGES = (
+    (0xAC00, 0xD7A3),  # Hangul syllables
+    (0x3130, 0x318F),  # Hangul compatibility jamo
+    (0x1100, 0x11FF),  # Hangul jamo
+)
+
+
+def _strip_korean_suffix(tok: str) -> str:
+    """Remove trailing Korean characters (particles/verb endings) from a token.
+
+    e.g. 'kubernetes는' → 'kubernetes', 'subnet-range로' → 'subnet-range'
+    """
+    i = len(tok)
+    while i > 0 and any(lo <= ord(tok[i - 1]) <= hi for lo, hi in _HANGUL_RANGES):
+        i -= 1
+    return tok[:i]
+
+
+def _is_technical_token(tok: str) -> bool:
+    """Return True if *tok* consists mainly of ASCII characters.
+
+    Rejects tokens that are purely Korean (common words and question
+    particles that broaden FTS match set without improving recall for
+    technical queries).
+    """
+    if not tok or len(tok) < 2:
+        return False
+    ascii_chars = sum(1 for ch in tok if ord(ch) < 128 and ch.isalnum())
+    korean_chars = sum(
+        1 for ch in tok if any(lo <= ord(ch) <= hi for lo, hi in _HANGUL_RANGES)
+    )
+    total_alpha = ascii_chars + korean_chars
+    if total_alpha == 0:
+        return False
+    # Accept if at least 60% of alphabetic characters are ASCII
+    return (ascii_chars / total_alpha) >= 0.6
+
+
+def _build_or_tsquery(query: str) -> str:
+    """Convert a natural-language query to an OR-based tsquery string.
+
+    Only ASCII-dominant (technical) tokens are included so that Korean
+    question words ("있는가", "어디인가") don't inflate FTS recall and
+    hurt precision.  Hyphenated terms are expanded so both the composite
+    ('ost-stor-01') and its parts ('ost', 'stor', '01') are searchable.
+    """
+    import re
+
+    # Split on whitespace AND common punctuation so "역할(Cinder," becomes
+    # ["역할", "Cinder"] rather than "역할cinder".
+    raw_tokens: List[str] = re.split(r"[\s,()\[\]{}?!#@=><|&]+", query.strip().lower())
+    # Strip leading/trailing non-alphanumeric chars, then Korean verb/particle suffixes
+    cleaned: List[str] = []
+    for t in raw_tokens:
+        t = re.sub(r"^[^a-z0-9가-힣\-_.]+|[^a-z0-9가-힣\-_.]+$", "", t)
+        t = _strip_korean_suffix(t)
+        cleaned.append(t)
+
+    expanded: List[str] = []
+    for tok in cleaned:
+        if not tok or tok in _FTS_STOPWORDS or not _is_technical_token(tok):
+            continue
+        # Keep the whole hyphenated token and also add sub-parts for partial matches.
+        parts = re.split(r"[-_]", tok)
+        parts = [p for p in parts if p and len(p) > 1 and p not in _FTS_STOPWORDS and _is_technical_token(p)]
+        if tok not in expanded:
+            expanded.append(tok)
+        for p in parts:
+            if p not in expanded:
+                expanded.append(p)
+    if not expanded:
+        # No technical tokens found — skip the DB round-trip.
+        return ""
+    # to_tsquery requires lexemes to be valid — quote each token
+    return " | ".join(f"'{t}'" for t in expanded)
 
 
 def pg_fts_search_l3(
@@ -75,13 +155,16 @@ def pg_fts_search_l3(
     Returns [(l3_id, fts_rank)] in descending rank order.
     Falls back to empty list on any error (best-effort).
 
-    Note: 'simple' tokenizer handles Korean whitespace splitting without
-    additional extensions. For better Korean coverage, a GIN index on
-    to_tsvector('simple', content) is recommended but not required.
+    Uses OR-based tsquery so multi-word queries match any chunk containing
+    at least one query token (better recall for keyword/hostname lookups).
     """
+    tsquery = _build_or_tsquery(query)
+    if not tsquery:
+        # No technical tokens extracted — skip the DB round-trip.
+        return []
     pf = _PG_FTS_PROJECT_FILTER if project_id is not None else ""
     sql = _PG_FTS_SQL.format(project_filter=pf)
-    params: list = [query, query]
+    params: list = [tsquery, tsquery]
     if project_id is not None:
         params.append(int(project_id))
     params.append(limit)
@@ -507,10 +590,12 @@ def retrieve_and_enrich(
         dense_ids.append(lid)
 
     if use_hybrid:
+        # Fetch 2× candidates from FTS so low-rank-but-keyword-exact chunks
+        # (e.g. very short chunks) are still surfaced for RRF fusion.
         fts_results = pg_fts_search_l3(
             query,
             conn,
-            limit=candidate_limit,
+            limit=max(candidate_limit * 2, 60),
             project_id=project_id,
         )
         sparse_ids = [l3_id for l3_id, _ in fts_results]

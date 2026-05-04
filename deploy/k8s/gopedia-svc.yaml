@@ -128,6 +128,15 @@ spec:
               value: "3"
             - name: GRAPH_MAX_RESULTS
               value: "3"
+            # ── Hybrid search (P3-D, v0.12.0) ────────────────────────────────
+            # PostgreSQL FTS 하이브리드 비활성: OR-tsquery 로 추출된 기술 토큰
+            # ("openstack","ubuntu","kubernetes")이 corpus 전체에 광범위 매칭되어
+            # dense 결과를 밀어내고 P@3 회귀 유발. 정식 P3-D는 Qdrant sparse(BM25)
+            # + re-ingest 필요. 인프라 코드(retriever.py)는 유지하며 비활성 상태로 운영.
+            - name: GOPEDIA_HYBRID_SEARCH_ENABLED
+              value: "false"
+            - name: GOPEDIA_HYBRID_ALPHA
+              value: "0.5"
           livenessProbe:
             httpGet:
               path: /api/health

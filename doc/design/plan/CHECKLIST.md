@@ -1,6 +1,6 @@
 # 미완성 항목 체크리스트
 
-> 최종 업데이트: 2026-05-04 (P3-A 분석 완료)
+> 최종 업데이트: 2026-05-04 (v0.12.0 P3-D PostgreSQL FTS 시도 — 실패, 인프라 보존)
 
 ---
 
@@ -52,10 +52,32 @@
 | P3-A | gardener top-k 상세 API — `GET /runs/{id}/queries` 엔드포인트 추가 | 근본 진단 수단 | `gardener_gopedia` 저장소 | 불필요 | ✅ 완료 (gardener_gopedia #26) — MISS 6개 확인, P3-D 진행 결정 |
 | P3-B | Cross-Encoder reranker 활성화 — `BAAI/bge-reranker-v2-m3` | 직접 원인 해결 시도 | `gopedia-svc.yaml` | 불필요 | ✅ 완료 (v0.11.0, gopedia #42) — P@3 불변, 레이턴시 -512ms |
 | P3-C | 임베딩 모델 검토 — 현재 BGE-M3 이미 최상급 | 간접 효과 | `embedder/openai.go` | **필요** | ⚠️ 낮은 우선순위 |
-| P3-D | 하이브리드 검색 — Qdrant sparse(BM25) + dense | **MISS 원인 직접 해결** | `retriever.py`, ingest 파이프라인 | **필요** | 🔲 **다음 단계** |
+| P3-D | 하이브리드 검색 — Qdrant sparse(BM25) + dense | **MISS 원인 직접 해결** | `retriever.py`, ingest 파이프라인 | **필요** | ⚠️ **PostgreSQL FTS 시도 후 중단** — 아래 분석 참조 |
 
 > **P3-A 분석 결론 (2026-05-04)**: secondary MISS 6개는 exact keyword(ost-stor-01, /etc/kolla 등) 불일치가 원인.
 > dense 벡터만으로는 구조적 한계. **P3-D(BM25 하이브리드)** 진행 → 잔여 MISS는 IMP-17(청킹) 검토.
+
+### P3-D 시도 결과 (v0.12.0, 2026-05-04)
+
+PostgreSQL FTS (`simple` config + GIN 인덱스 + RRF 융합)를 구현해 re-ingest 없이 하이브리드 검색을 시도했으나 실패.
+
+**실패 원인**:
+
+1. **OR-query 광범위 매칭**: `"openstack"`, `"ubuntu"`, `"kubernetes"` 등 corpus 전체에 퍼진 기술 용어들이  
+   FTS OR-query에 포함되면 100-200+ 청크 매칭 → RRF 융합 시 올바른 dense 결과를 밀어냄.
+
+2. **alpha=0.5 균등 가중치 문제**: FTS rank 1~4 문서가 dense rank 1 문서와 동등하게 경쟁.  
+   primary qrel이 dense rank 1이어도 FTS 문서들에게 밀려 top-5 이탈.
+
+3. **구조적 한계**: FTS-only MISS 문서를 회수하려면 낮은 alpha 필요(FTS 가중치 증가).  
+   그러나 낮은 alpha는 항상 regression 유발. 어떤 alpha에서도 precision과 recall을 동시에 개선 불가.
+
+**측정 결과**:
+- v0.11.0 기준: P@3=0.367, Recall@5=0.900, MRR@10=0.950
+- v0.12.0 (FTS 활성): P@3=0.272~0.278, Recall@5=0.889~0.900, MRR@10=0.778~0.815 → **회귀**
+
+**결론**: PostgreSQL FTS로는 P@3 개선 불가. 정식 P3-D는 **Qdrant sparse vector(BM25) + re-ingest** 필요.  
+retriever.py의 hybrid 인프라 코드(`pg_fts_search_l3`, `rrf_fuse`, `_build_or_tsquery`)는 향후 Qdrant sparse 연동 기반으로 보존.
 
 ---
 
