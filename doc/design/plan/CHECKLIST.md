@@ -1,6 +1,6 @@
 # 미완성 항목 체크리스트
 
-> 최종 업데이트: 2026-05-04
+> 최종 업데이트: 2026-05-04 (P3-A 분석 완료)
 
 ---
 
@@ -43,19 +43,19 @@
 
 ## 진행 예정 — P@3 개선 로드맵
 
-> **현황 (v0.10.0)**: P@3 = 0.367 (k=3, secondary 15개 중 3개만 top-3 내 검색)
-> **구조적 원인**: cross-encoder 재랭킹 후 secondary가 rank 4-5로 밀림. graph 결과 수 제한(GC-1/2)으로 해결 불가.
-> **상세 분석**: `doc/design/plan/TODO.md` — P@3 개선 로드맵 섹션 참고.
+> **현황 (v0.11.0)**: P@3 = 0.367 — secondary 15개 중 6개가 벡터 검색에서 완전 탈락(MISS), 9개는 rank 1-2 기여 중
+> **P3-A 진단 결론**: MISS 패턴은 exact keyword(호스트명·CIDR·경로) → BM25 하이브리드(P3-D) 우선 진행 결정
+> **상세 분석**: `doc/rag-test-reports/v0.11.0_p3a_analysis.md`
 
 | # | 항목 | 접근 | 관련 저장소/파일 | re-ingest | 상태 |
 |---|------|------|----------------|-----------|------|
-| P3-A | gardener top-k 상세 API — `GET /runs/{id}/queries` 엔드포인트 추가 | 근본 진단 수단 | `gardener_gopedia` 저장소 | 불필요 | ✅ 구현 완료 (feat/p3a-topk-detail-api, PR 예정) |
-| P3-B | Cross-Encoder reranker 활성화 — `BAAI/bge-reranker-v2-m3` | 직접 원인 해결 시도 | `gopedia-svc.yaml` | 불필요 | ✅ 완료 (v0.11.0) — P@3 불변, 레이턴시 -512ms. secondary top-k 부재 확인 |
+| P3-A | gardener top-k 상세 API — `GET /runs/{id}/queries` 엔드포인트 추가 | 근본 진단 수단 | `gardener_gopedia` 저장소 | 불필요 | ✅ 완료 (gardener_gopedia #26) — MISS 6개 확인, P3-D 진행 결정 |
+| P3-B | Cross-Encoder reranker 활성화 — `BAAI/bge-reranker-v2-m3` | 직접 원인 해결 시도 | `gopedia-svc.yaml` | 불필요 | ✅ 완료 (v0.11.0, gopedia #42) — P@3 불변, 레이턴시 -512ms |
 | P3-C | 임베딩 모델 검토 — 현재 BGE-M3 이미 최상급 | 간접 효과 | `embedder/openai.go` | **필요** | ⚠️ 낮은 우선순위 |
-| P3-D | 하이브리드 검색 — Qdrant sparse(BM25) + dense | 간접 효과 | `retriever.py`, ingest 파이프라인 | **필요** | 🔲 P3-A 결과 확인 후 판단 |
+| P3-D | 하이브리드 검색 — Qdrant sparse(BM25) + dense | **MISS 원인 직접 해결** | `retriever.py`, ingest 파이프라인 | **필요** | 🔲 **다음 단계** |
 
-> **P3-A·B 결론**: secondary qrel이 top-k 후보 자체에 없음 확인. 재랭킹으로는 해결 불가.
-> **다음**: P3-A로 수집한 hit rank 데이터로 IMP-17(청킹) vs P3-D(하이브리드) 방향 결정.
+> **P3-A 분석 결론 (2026-05-04)**: secondary MISS 6개는 exact keyword(ost-stor-01, /etc/kolla 등) 불일치가 원인.
+> dense 벡터만으로는 구조적 한계. **P3-D(BM25 하이브리드)** 진행 → 잔여 MISS는 IMP-17(청킹) 검토.
 
 ---
 
