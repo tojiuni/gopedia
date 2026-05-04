@@ -353,6 +353,7 @@ def retrieve_and_enrich(
     use_reranker: Optional[bool] = None,
     reranker_model: Optional[str] = None,
     use_graph_context: Optional[bool] = None,
+    max_graph_results: Optional[int] = None,
 ) -> List[dict]:
     """If ``limit`` is passed (legacy), it overrides ``final_limit``.
 
@@ -360,6 +361,12 @@ def retrieve_and_enrich(
     TYPEDB_HOST is set in the environment (zero-cost skip otherwise).
     Graph-expanded results are appended after Qdrant results and carry
     ``source: "graph_expansion"`` to distinguish their origin.
+
+    Args:
+        max_graph_results: Maximum number of graph-expansion results to append.
+            When None, falls back to the ``GRAPH_MAX_RESULTS`` env var, then
+            unlimited. Limiting graph results reduces P@3 degradation caused by
+            graph-expanded chunks competing with secondary qrels in reranking.
     """
     query = _rewrite_query(query)
     if use_reranker is None:
@@ -454,9 +461,19 @@ def retrieve_and_enrich(
     if use_graph_context and seen_l1_ids and project_id is not None:
         try:
             from flows.xylem_flow.graph_context import get_related_l1_ids
+
+            _graph_limit = max_graph_results
+            if _graph_limit is None:
+                _env = os.environ.get("GRAPH_MAX_RESULTS", "")
+                if _env.isdigit():
+                    _graph_limit = int(_env)
+
             related_l1_ids = get_related_l1_ids(seen_l1_ids, project_id)
             already_l1 = {ctx.get("l1_id") for ctx in out}
+            graph_added = 0
             for rel_l1_id in related_l1_ids:
+                if _graph_limit is not None and graph_added >= _graph_limit:
+                    break
                 if rel_l1_id in already_l1:
                     continue
                 # Fetch the top L3 chunk for this related file (lowest sort_order)
@@ -490,6 +507,7 @@ def retrieve_and_enrich(
                 rel_ctx["qdrant_score"] = None
                 already_l1.add(rel_l1_id)
                 out.append(rel_ctx)
+                graph_added += 1
         except Exception:
             pass  # graph expansion is best-effort; never break retrieval
 
