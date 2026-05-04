@@ -29,7 +29,15 @@
 |---|------|----------|------|
 | GC-1 | `graph_context.py` — 반환 l1_id 수 상한 추가 (`max_siblings` / `GRAPH_MAX_SIBLINGS`) | `flows/xylem_flow/graph_context.py` | ✅ 완료 |
 | GC-2 | `retriever.py` — graph expansion 결과 수 상한 (`max_graph_results` / `GRAPH_MAX_RESULTS`) | `flows/xylem_flow/retriever.py` | ✅ 완료 |
-| GC-3 | gardener_gopedia 재측정 — GC-1/2 적용 후 v0.9.0 대비 P@3·Recall@5 비교 | — | 🔲 재측정 필요 |
+| GC-3 | gardener_gopedia 재측정 — GC-1/2 적용 후 v0.9.0 대비 P@3·Recall@5 비교 | — | ✅ 완료 (v0.10.0, run_id: 86c9d663) |
+
+---
+
+## GC 튜닝 결론
+
+> `GRAPH_MAX_RESULTS=3` / `GRAPH_MAX_SIBLINGS=3` 운영 환경 고정 권장.
+> P@3 = 0.367은 구조적 한계 — graph 결과 수가 아닌 삽입 위치 문제. gardener top-k 상세 API 없이는 개선 불가.
+> Recall@5 0.900 / MRR@10 0.950 / nDCG@10 0.890 안정 유지.
 
 ---
 
