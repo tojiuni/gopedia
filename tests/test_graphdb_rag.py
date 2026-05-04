@@ -608,6 +608,145 @@ def test_retrieve_and_enrich_max_graph_results_env(monkeypatch) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# P3-D: Hybrid search (pg_fts_search_l3 + rrf_fuse + retrieve_and_enrich)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from flows.xylem_flow.retriever import pg_fts_search_l3, rrf_fuse
+
+
+def test_rrf_fuse_dense_only() -> None:
+    """RRF with no sparse overlap returns dense ordering (full alpha weight)."""
+    dense = ["a", "b", "c"]
+    sparse: list = []
+    result = rrf_fuse(dense, sparse, alpha=1.0)
+    assert result[:3] == ["a", "b", "c"], "dense-only RRF should preserve order"
+
+
+def test_rrf_fuse_sparse_only() -> None:
+    """RRF with no dense overlap returns sparse ordering (full 1-alpha weight)."""
+    dense: list = []
+    sparse = ["x", "y", "z"]
+    result = rrf_fuse(dense, sparse, alpha=0.0)
+    assert result[:3] == ["x", "y", "z"], "sparse-only RRF should preserve order"
+
+
+def test_rrf_fuse_overlap_boosts_shared() -> None:
+    """Items appearing in both lists get higher fused score."""
+    dense = ["a", "b", "c"]
+    sparse = ["c", "d", "e"]  # 'c' overlap
+    result = rrf_fuse(dense, sparse, alpha=0.5)
+    # 'c' appears in both → higher score than 'b' (dense-only) or 'd' (sparse-only)
+    assert "c" in result
+    c_pos = result.index("c")
+    # 'b' is dense rank=1, 'c' is dense rank=2 but also sparse rank=0
+    # 'c' should outrank 'b' because of dual contribution
+    b_pos = result.index("b")
+    assert c_pos < b_pos, "shared item 'c' should outrank dense-only 'b'"
+
+
+def test_rrf_fuse_deduplication() -> None:
+    """Each l3_id appears only once in the fused output."""
+    dense = ["a", "b", "a"]  # duplicate in input
+    sparse = ["b", "c"]
+    result = rrf_fuse(dense, sparse)
+    assert len(result) == len(set(result)), "fused results should have no duplicates"
+
+
+def test_pg_fts_search_l3_returns_empty_on_error() -> None:
+    """pg_fts_search_l3 should return [] on any DB error (best-effort)."""
+    conn = _make_mock_conn()
+    conn.cursor.return_value.__enter__.return_value.execute.side_effect = Exception("DB error")
+    result = pg_fts_search_l3("test query", conn, limit=10)
+    assert result == [], "pg_fts_search_l3 should return [] on error"
+
+
+def test_retrieve_and_enrich_hybrid_mode(monkeypatch) -> None:
+    """use_hybrid=True merges FTS candidates with Qdrant dense via RRF."""
+    conn = _make_mock_conn()
+    fts_l3_id = "fts-only-chunk"
+    dense_l3_id = "dense-chunk"
+
+    hit_ctx_dense = {
+        "l1_id": "l1-dense", "l2_id": "l2-x", "matched_l3_id": dense_l3_id,
+        "breadcrumb": "", "l1_title": "", "l2_summary": "", "section_heading": "",
+        "matched_content": "dense content", "surrounding_context": "", "l2_section_id": "",
+        "l2_block_type": "", "source_path": "", "doc_name": "",
+    }
+    hit_ctx_fts = {
+        "l1_id": "l1-fts", "l2_id": "l2-y", "matched_l3_id": fts_l3_id,
+        "breadcrumb": "", "l1_title": "", "l2_summary": "", "section_heading": "",
+        "matched_content": "fts-only content", "surrounding_context": "", "l2_section_id": "",
+        "l2_block_type": "", "source_path": "", "doc_name": "",
+    }
+
+    with patch("flows.xylem_flow.retriever.qdrant_search_l3_points",
+               return_value=[_mock_qdrant_hit(dense_l3_id)]):
+        with patch("flows.xylem_flow.retriever.embed_query_local", return_value=[0.1] * 1024):
+            with patch("flows.xylem_flow.retriever.pg_fts_search_l3",
+                       return_value=[(fts_l3_id, 0.8), (dense_l3_id, 0.3)]):
+                with patch("flows.xylem_flow.retriever.fetch_rich_context",
+                           side_effect=[hit_ctx_dense, hit_ctx_fts]):
+                    with patch("flows.xylem_flow.project_config.resolve_retrieval_settings") as mock_res:
+                        mock_res.return_value = MagicMock(
+                            embedding_backend="local",
+                            local_embedding_addr="http://localhost:18789",
+                            qdrant_host="localhost", qdrant_port=6333,
+                            collection="gopedia_markdown", vector_name="",
+                            embedding_model="text-embedding-3-small",
+                        )
+                        with patch("flows.xylem_flow.project_config.fetch_project_source_metadata",
+                                   return_value={}):
+                            result = retrieve_and_enrich(
+                                "test query", conn,
+                                use_hybrid=True,
+                                use_graph_context=False,
+                                final_limit=5,
+                            )
+
+    l3_ids_returned = [r["matched_l3_id"] for r in result]
+    assert fts_l3_id in l3_ids_returned, "FTS-only chunk should appear in hybrid results"
+    assert dense_l3_id in l3_ids_returned, "dense chunk should still appear in hybrid results"
+
+
+def test_retrieve_and_enrich_hybrid_env(monkeypatch) -> None:
+    """GOPEDIA_HYBRID_SEARCH_ENABLED=true activates hybrid mode."""
+    monkeypatch.setenv("GOPEDIA_HYBRID_SEARCH_ENABLED", "true")
+    conn = _make_mock_conn()
+    fts_l3_id = "fts-env-chunk"
+
+    hit_ctx = {
+        "l1_id": "l1-env", "l2_id": "l2-z", "matched_l3_id": fts_l3_id,
+        "breadcrumb": "", "l1_title": "", "l2_summary": "", "section_heading": "",
+        "matched_content": "env fts content", "surrounding_context": "", "l2_section_id": "",
+        "l2_block_type": "", "source_path": "", "doc_name": "",
+    }
+
+    with patch("flows.xylem_flow.retriever.qdrant_search_l3_points", return_value=[]):
+        with patch("flows.xylem_flow.retriever.embed_query_local", return_value=[0.1] * 1024):
+            with patch("flows.xylem_flow.retriever.pg_fts_search_l3",
+                       return_value=[(fts_l3_id, 0.9)]):
+                with patch("flows.xylem_flow.retriever.fetch_rich_context", return_value=hit_ctx):
+                    with patch("flows.xylem_flow.project_config.resolve_retrieval_settings") as mock_res:
+                        mock_res.return_value = MagicMock(
+                            embedding_backend="local",
+                            local_embedding_addr="http://localhost:18789",
+                            qdrant_host="localhost", qdrant_port=6333,
+                            collection="gopedia_markdown", vector_name="",
+                            embedding_model="text-embedding-3-small",
+                        )
+                        with patch("flows.xylem_flow.project_config.fetch_project_source_metadata",
+                                   return_value={}):
+                            result = retrieve_and_enrich(
+                                "test query", conn,
+                                use_graph_context=False,
+                                final_limit=5,
+                            )
+
+    assert any(r["matched_l3_id"] == fts_l3_id for r in result), \
+        "GOPEDIA_HYBRID_SEARCH_ENABLED=true should activate FTS via env"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Integration tests (require TYPEDB_HOST to be set and TypeDB reachable)
 # ─────────────────────────────────────────────────────────────────────────────
 
