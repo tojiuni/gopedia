@@ -121,6 +121,11 @@ spec:
               value: "1729"
             - name: TYPEDB_DATABASE
               value: "gopedia"
+            # ── Graph expansion cap (v0.10.0 튜닝, P@3 안정화) ───────────────
+            - name: GRAPH_MAX_SIBLINGS
+              value: "3"
+            - name: GRAPH_MAX_RESULTS
+              value: "3"
           livenessProbe:
             httpGet:
               path: /api/health
