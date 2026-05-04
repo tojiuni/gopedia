@@ -140,7 +140,7 @@ xychart-beta
     line [0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40, 0.96, 0.87]
 ```
 
-→ **Details (full table, report links, mcp notes):** [`doc/rag-test-reports/README.md#ir-metrics-snapshot`](./doc/rag-test-reports/README.md#ir-metrics-snapshot)
+→ **Details (full table, report links, notes):** [`doc/rag-test-reports/README.md#ir-metrics-snapshot`](./doc/rag-test-reports/README.md#ir-metrics-snapshot)
 
 ---
 
