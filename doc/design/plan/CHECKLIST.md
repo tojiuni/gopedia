@@ -41,16 +41,34 @@
 
 ---
 
-## 진행 예정 — 검색 품질 개선 후보
+## 진행 예정 — P@3 개선 로드맵
 
-> **진단 조건**: gardener eval Recall@5 < 0.5 또는 MRR@10 < 0.9 시 순서대로 적용.
+> **현황 (v0.10.0)**: P@3 = 0.367 (k=3, secondary 15개 중 3개만 top-3 내 검색)
+> **구조적 원인**: cross-encoder 재랭킹 후 secondary가 rank 4-5로 밀림. graph 결과 수 제한(GC-1/2)으로 해결 불가.
+> **상세 분석**: `doc/design/plan/TODO.md` — P@3 개선 로드맵 섹션 참고.
+
+| # | 항목 | 접근 | 관련 저장소/파일 | re-ingest | 상태 |
+|---|------|------|----------------|-----------|------|
+| P3-A | gardener top-k 상세 API — rank-1/2/3 l3_id 반환 엔드포인트 추가 | 근본 진단 수단 | `gardener_gopedia` 저장소 | 불필요 | 🔲 대기 |
+| P3-B | Cross-Encoder 모델 업그레이드 — `ms-marco-MiniLM-L-12-v2` | 직접 원인 해결 | `retriever.py`, `gopedia-svc.yaml` | 불필요 | 🔲 대기 |
+| P3-C | 임베딩 모델 업그레이드 — `text-embedding-3-large` | 간접 효과 | `embedder/openai.go`, `retriever.py` | **필요** | 🔲 대기 |
+| P3-D | 하이브리드 검색 — Qdrant sparse(BM25) + dense | 간접 효과 | `retriever.py`, ingest 파이프라인 | **필요** | 🔲 대기 |
+
+> **권장 순서**: P3-A(진단) → P3-B(즉시 효과) → P3-C/D(re-ingest 필요, 병행 가능)
+> P3-B는 re-ingest 없이 바로 gardener 재측정으로 효과 확인 가능.
+
+---
+
+## 진행 예정 — 검색 품질 개선 후보 (메트릭 회귀 시)
+
+> **진단 조건**: gardener eval Recall@5 < 0.85 또는 MRR@10 < 0.90 시 순서대로 적용.
 > 한 번에 하나만 수정 후 재측정.
 
 | # | 항목 | 현황 → 후보 | 관련 파일 | 상태 |
 |---|------|------------|----------|------|
-| IMP-16 | 임베딩 모델 업그레이드 | `text-embedding-3-small` → `text-embedding-3-large` | `internal/phloem/embedder/openai.go`, `retriever.py` | 🔲 대기 |
+| IMP-16 | 임베딩 모델 비교·검토 | 현재 **BGE-M3** (로컬 Ollama) — 이미 최상급. 교체 효과 낮음. 필요 시 재평가. | `embedder/openai.go`, `gopedia-svc.yaml` | ⚠️ 낮은 우선순위 |
 | IMP-17 | 청킹 전략 개선 | heading-based → semantic / heading+fixed-size 하이브리드 | `internal/phloem/chunker/` | 🔲 대기 |
-| IMP-18 | 하이브리드 검색 | 벡터 only → 벡터 + 키워드 (Qdrant sparse) | `retriever.py::retrieve_and_enrich()` | 🔲 대기 |
+| IMP-18 | 하이브리드 검색 | 벡터 only → 벡터 + 키워드 (Qdrant sparse) | `retriever.py::retrieve_and_enrich()` | 🔲 대기 (P3-D와 동일) |
 
 ---
 
@@ -60,4 +78,3 @@
 |---|------|------|
 | IMP-12 | Cross-Encoder → Python 상주 gRPC 서비스 | proto 설계 + 대규모 리팩터 필요 |
 | IMP-14 | L2 Qdrant 인덱싱 | 전체 re-ingest 필요 |
-| P@3 구조적 개선 | gardener top-k 상세 API 추가 전까지 rank-2/3 실측 불가 (k=24 필요, 현재 k=3) |

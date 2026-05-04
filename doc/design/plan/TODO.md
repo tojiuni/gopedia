@@ -106,6 +106,111 @@ P@3 달성 상한:
 
 ---
 
+## P@3 개선 로드맵
+
+> **현황 (v0.10.0 기준)**
+>
+> ```
+> P@3 = 0.367 = 33/90
+>   - primary 30개 × 1/3 기여 = 30/90  (primary는 항상 top-3 내 검색)
+>   - secondary 15개 × k/15 기여 = 3/90  (현재 k=3, top-3 내 secondary 3개)
+>
+> 목표별 필요 k:
+>   P@3 = 0.389 → k=5   (qrel 코드리뷰 전 50 qrels 기준 최고치)
+>   P@3 = 0.450 → k=10
+>   P@3 = 0.500 → k=15  (secondary 전부 top-3 — 이론 상한)
+> ```
+>
+> **v0.10.0 확인 사항**: `GRAPH_MAX_RESULTS=3`으로 graph 결과 수 제한해도 P@3 불변.
+> → P@3 하락은 결과 수 문제가 아니라 **cross-encoder 재랭킹 시 secondary가 rank 4-5로 밀리는 구조** 문제.
+
+### 접근 A — gardener top-k 상세 API 추가 ⭐ (근본 해결, 외부 저장소 변경)
+
+**효과**: 실제 rank-1/2/3 l3_id를 확보 → secondary qrel 정확도 재검증 가능 → k를 실질적으로 올릴 수 있음.
+
+| 항목 | 내용 |
+|------|------|
+| 변경 대상 | `gardener_gopedia` 저장소 — `/runs/{id}/queries` 또는 `/runs/{id}/details` 엔드포인트에 `top_k_hits: [l3_id, ...]` 추가 |
+| gopedia 측 변경 | gardener_run_report MCP 툴 or gardener API 호출 스크립트에서 top-3 l3_id 수집 → qrel과 대조 |
+| 기대 효과 | 어떤 secondary qrel이 실제로 rank 4-5에 있는지 파악 → 해당 l3_id를 qrel에 추가하거나 청킹·모델 전략 근거 자료로 활용 |
+| 선행 조건 | gardener_gopedia 저장소 접근 및 API 확장 권한 |
+
+### 접근 B — Cross-Encoder 모델 교체·튜닝 (직접 원인 해결)
+
+**효과**: 재랭킹 단계에서 secondary qrel이 rank 1-3으로 올라올 가능성 직접 상승.
+
+| 항목 | 내용 |
+|------|------|
+| 현황 | `ms-marco-MiniLM-L-6-v2` (또는 동급) — osteon 의학 도메인에 최적화 안 됨 |
+| 후보 1 | `cross-encoder/ms-marco-MiniLM-L-12-v2` — 동일 계열 대형 버전, 재랭킹 정확도 향상 |
+| 후보 2 | 도메인 특화 fine-tuning — osteon 데이터로 cross-encoder 직접 학습 (리소스 소요 큼) |
+| 관련 파일 | `flows/xylem_flow/retriever.py` (reranker 호출부), `deploy/k8s/gopedia-svc.yaml` (모델 env) |
+| 측정 방법 | gardener 재측정 → P@3·nDCG@10 비교 |
+| 주의 | re-ingest 불필요, 모델 교체만으로 즉시 효과 확인 가능 |
+
+### 접근 C — 임베딩 모델 교체·비교 (간접 효과)
+
+**효과**: 초기 Qdrant 벡터 검색 단계에서 secondary qrel score 상승 → cross-encoder에 더 좋은 후보 제공.
+
+> **현황 정정 (2026-05-04 확인)**:
+> 코드 기본값은 `text-embedding-3-small`이나, 운영 환경은 `OPENAI_BASE_URL=http://ollama-embed.ai-assistant.svc:11434/v1` + `OPENAI_EMBEDDING_MODEL=bge-m3`으로 **BGE-M3 로컬 모델**을 사용 중.
+
+#### 현재 모델: BGE-M3
+
+| 항목 | 값 |
+|------|-----|
+| 모델 | `BAAI/bge-m3` |
+| 서빙 | Ollama (`ollama-embed.ai-assistant.svc:11434`, OpenAI 호환 API) |
+| 차원 | 1024-dim |
+| 컨텍스트 | 최대 8,192 토큰 |
+| 특성 | 다국어 dense + sparse + ColBERT 통합. 오픈소스 최상급 다국어 모델. 한국어 우수. |
+| 비용 | 무료 (로컬 서빙) |
+
+#### 후보 모델 비교
+
+| 모델 | 차원 | 비용 | 특성 | P@3 기대 효과 |
+|------|------|------|------|--------------|
+| **BGE-M3** (현재) | 1024 | 무료 | 다국어·다목적·dense+sparse+colbert | 기준 |
+| `text-embedding-3-small` | 1536 | 유료($0.02/1M) | OpenAI 영어 강세, 한국어 보통 | 현재보다 낮을 가능성 |
+| `text-embedding-3-large` | 3072 | 유료($0.13/1M) | OpenAI 고정밀, 영어 강세 | 한국어 쿼리엔 BGE-M3 대비 불확실 |
+| `bge-large-zh-v1.5` | 1024 | 무료 | 중국어 특화 | 한국어 쿼리엔 부적합 |
+| `multilingual-e5-large` | 1024 | 무료 | 다국어, BGE-M3보다 구형 | BGE-M3 대비 약세 예상 |
+
+> **결론**: BGE-M3는 이미 최상급 오픈소스 다국어 모델. 임베딩 모델 교체로 P@3 개선 여지 낮음.
+> 대신 **Cross-Encoder 교체(접근 B)**가 더 직접적인 효과 기대.
+
+| 관련 파일 | `internal/phloem/embedder/openai.go`, `flows/xylem_flow/retriever.py`, `deploy/k8s/gopedia-svc.yaml` |
+|-----------|------|
+| 주의 | **전체 re-ingest 필요** (벡터 공간 변경). `POST /api/index/reset` 후 재인제스트. |
+
+### 접근 D — 하이브리드 검색 도입 (간접 효과)
+
+**효과**: 벡터 유사도 + 키워드 매칭 결합 → secondary qrel이 벡터로 놓쳐도 키워드로 캐치.
+
+| 항목 | 내용 |
+|------|------|
+| 현황 | Qdrant 벡터 검색 only |
+| 후보 | Qdrant sparse vector(BM25) + dense vector 결합 (Qdrant 네이티브 지원) |
+| 관련 파일 | `flows/xylem_flow/retriever.py::retrieve_and_enrich()`, ingest 시 sparse vector 추가 |
+| 주의 | ingest 파이프라인 변경 필요 (sparse 임베딩 추가), 전체 re-ingest 필요 |
+
+### 접근 우선순위 및 의존성
+
+```
+[지금 바로 가능]
+  B (Cross-Encoder 교체) → re-ingest 불필요, 즉시 gardener 재측정 가능
+  A (gardener API 확장) → 외부 저장소 작업이지만 근본 진단 수단
+
+[re-ingest 필요, 나중에]
+  C (임베딩 모델 업그레이드) → B 효과 확인 후 병행
+  D (하이브리드 검색) → C와 동시 적용 가능하나 ingest 변경 범위 큼
+```
+
+> **권장 순서**: A(gardener API) → B(cross-encoder) → C(임베딩) → D(하이브리드)
+> A 없이 B부터 해도 P@3 효과 확인 가능.
+
+---
+
 ## 검색 품질 개선 후보 (평가 메트릭 기반)
 
 **배경**
