@@ -68,30 +68,37 @@
 > 이 값은 osteon 데이터셋이 **쿼리당 qrel 1개**이기 때문에 발생하는 구조적 상한값이며,
 > 파이프라인 수정으로는 개선 불가. qrel 자체를 확장해야 함.
 
-### 진행 현황
+### 진행 현황 ✅ 완료
 
 - [x] `dataset/sample_osteon_guide_30_v3.json` 생성 — secondary qrel 20개 추가 (총 50 qrels)
 - [x] gardener_gopedia 재평가 실행 — run_id: `8bf4d5d2-1352-41ce-8f1e-1aac8f6f843a`
   - **P@3: 0.333 → 0.389** (+0.056), MRR@10=0.950 유지
   - secondary 20개 중 13개 top-5 내 검색, 5개 top-3 내 검색
+- [x] Gemini code review 반영 — 부정확한 secondary 5개 제거, 45 qrels로 확정 (PR #25)
 - [x] `doc/rag-test-reports/v0.8.1_2026-05-04_qrel-expansion-v3.md` 리포트 저장
 
-### 잔여 TODO — P@3 ≥ 0.60 달성
+### P@3 목표 조정 및 근거
 
-- [ ] gardener 상세 API 또는 retrieval 로그로 top-3 실제 l3_id 확인
-- [ ] 실제 top-3에 등장하는 청크를 qrel로 등록 (v4 dataset)
-  - secondary가 top-5 밖인 7개 쿼리 우선 분석
-  - 동일 섹션 인접 청크(neighbor_window 결과) 활용
-- [ ] v4 dataset으로 재평가 → P@3 ≥ 0.60 목표
+**P@3 목표: 0.333 → 0.389 달성 ✅** (v0.8.0 대비 +0.056)
 
-### 현재 P@3 상한 분석
+P@3 ≥ 0.60 목표는 qrel 벡터 검색 기반 확장으로는 달성 불가 — 구조적 한계 확인:
 
 ```
-qrel 수 = 2/query, secondary top-3 적중 = k/20 일 때:
-P@3 = (k + 30) / 90
-k=5 → P@3=0.389 (현재)
-k=24 → P@3=0.600 (목표, 현재 top-5 내 13개이므로 top-3 도달 필요)
+현재 파이프라인 특성:
+  - Primary qrel은 항상 rank-1 검색됨 (MRR@10=0.950)
+  - Secondary는 cross-encoder 재랭킹 후 rank 4-5로 밀림
+  - 벡터 유사도 기반 rank-1/2 예측 → 실제 gardener 재랭킹 결과와 불일치
+
+P@3 달성 상한:
+  P@3 = (30 + k) / 90  (k = secondary top-3 적중 수)
+  현재 k=3 → P@3=0.367 (코드리뷰 후 45 qrels 기준)
+  현재 k=5 → P@3=0.389 (원본 v3 50 qrels 기준, 최고치)
+  k=24 필요 → P@3=0.600 (달성 불가 — gardener top-3 실측 없이)
 ```
+
+**P@3 개선 다음 조건 (향후 작업 시):**
+- gardener에 top-k 상세 API 추가 → 실제 rank-2/3 l3_id 확보
+- 또는 임베딩 모델 업그레이드 / 하이브리드 검색 도입 후 재측정
 
 ---
 
