@@ -7,26 +7,17 @@
 > **선행 조건**: gardener_gopedia로 현재 파이프라인 품질 베이스라인 측정 및 기록 후 작업 시작.
 > 측정: Telegram `"gopedia 품질 테스트 해줘"` → run_id 기록 → `doc/rag-test-reports/` 저장
 
-### Phase 1 — TypeDB 스키마 확장 + K8s 활성화
+### Phase 1 — TypeDB 스키마 확장 + K8s 활성화 ✅ 완료 (PR #38)
 
-- [ ] `core/ontology_so/typedb_schema.typeql` 수정
-  - `directory` entity 추가 (`dir_path`, `project_id` attribute)
-  - `file` entity: 기존 `document` rename + `l1_id` (PG UUID 브리지) 추가
-  - `section` entity: `l2_id` 브리지 추가
-  - `chunk` entity 신규 (`l3_id` 브리지)
-  - `contains` relation 통합 (`directory→file`, `file→section`, `section→chunk`)
-- [ ] `deploy/k8s/typedb.yaml` 신규 (TypeDB StatefulSet + PVC 20Gi + Service)
-- [ ] `deploy/k8s/gopedia-svc.yaml` TypeDB env 주석 해제
+- [x] `core/ontology_so/typedb_schema.typeql` 수정
+- [x] `deploy/k8s/typedb.yaml` 신규 (TypeDB StatefulSet + PVC 20Gi + ClusterIP/Headless Service)
+- [x] `deploy/k8s/gopedia-svc.yaml` TypeDB env 주석 해제
 
-### Phase 2 — Ingest-time TypeDB 동기화 확장
+### Phase 2 — Ingest-time TypeDB 동기화 확장 ✅ 완료 (PR #38)
 
-- [ ] `core/ontology_so/typedb_sync.py` 수정
-  - `sync_document_to_typedb()`: `document` → `file` entity, `l1_id`/`l2_id` 삽입
-  - `sync_directory_tree_to_typedb(project_id, l1_rows)` 신규
-    - `tree.py`의 `build_project_l1_tree()` 출력을 입력으로 받아 경로 파싱
-    - `directory → file contains` 관계 bulk insert
-- [ ] `property/root_props/run.py`: ingest 완료 후 `sync_directory_tree_to_typedb()` 호출
-- [ ] `core/ontology_so/postgres_ddl.sql`: `knowledge_l1.typedb_synced_at TIMESTAMP` 추가 (비동기 재시도 추적)
+- [x] `core/ontology_so/typedb_sync.py` 수정
+- [x] `property/root_props/run.py`: ingest 완료 후 `sync_directory_tree_to_typedb()` 호출
+- [x] `core/ontology_so/postgres_ddl.sql`: `knowledge_l1.typedb_synced_at TIMESTAMP` 추가
 
 ### Phase 3 — graph_context.py 신규 모듈
 
@@ -37,12 +28,21 @@
 
 ### Phase 4 — retriever.py 통합
 
-- [ ] `flows/xylem_flow/retriever.py` 수정
-  - `retrieve_and_enrich()` 내 Qdrant 결과 후 graph expansion 블록 삽입
+### Phase 3 — graph_context.py 신규 모듈 ✅ 완료 (PR #38)
+
+- [x] `flows/xylem_flow/graph_context.py` 신규 생성
+  - `get_related_l1_ids(hit_l1_ids, project_id, depth=1) → list[str]`
+  - TypeDB `contains` 탐색: hit file → parent directory → sibling files l1_id 반환
+  - TYPEDB_HOST 미설정 시 빈 리스트 반환 (graceful degradation)
+
+### Phase 4 — retriever.py 통합 ✅ 완료 (PR #38)
+
+- [x] `flows/xylem_flow/retriever.py` 수정
+  - `retrieve_and_enrich()` 내 graph expansion 블록 삽입
   - `TYPEDB_HOST` 설정 시에만 활성화 (zero-cost skip)
   - `use_graph_context: Optional[bool] = None` 파라미터 추가
   - `source: "graph_expansion"` 필드로 graph 기원 결과 구분
-- [ ] gardener_gopedia로 Phase 4 적용 후 재측정 → 베이스라인 대비 Recall@5 비교
+- [ ] gardener_gopedia로 TypeDB K8s 배포 후 재측정 → 베이스라인 대비 Recall@5 비교
 
 ---
 
@@ -68,21 +68,30 @@
 > 이 값은 osteon 데이터셋이 **쿼리당 qrel 1개**이기 때문에 발생하는 구조적 상한값이며,
 > 파이프라인 수정으로는 개선 불가. qrel 자체를 확장해야 함.
 
-### TODO
+### 진행 현황
 
-- [ ] `dataset/sample_osteon_guide_30_v2.json` qrel 확장
-  - 각 쿼리에 primary qrel 1개 → secondary qrel 2~3개 추가
-  - secondary 기준: 동일 섹션 인접 청크(`l2_id` 기준 ± 1), 동일 주제 다른 파일 청크
-  - 작업 방법: gardener_gopedia `POST /datasets/{id}/queries/{qid}/qrels` API 활용
-    또는 JSON 직접 편집 후 `POST /datasets` + `POST .../resolve-qrels`
-- [ ] gardener_gopedia 재평가 실행 (`quality_preset` 대신 확장된 dataset 사용)
-  - 목표: P@3 ≥ 0.60 (쿼리당 관련 청크 2개 이상 top-3 내 확인)
-- [ ] `doc/rag-test-reports/`에 비교 리포트 저장 (v0.8.0 대비 P@3 delta 기록)
+- [x] `dataset/sample_osteon_guide_30_v3.json` 생성 — secondary qrel 20개 추가 (총 50 qrels)
+- [x] gardener_gopedia 재평가 실행 — run_id: `8bf4d5d2-1352-41ce-8f1e-1aac8f6f843a`
+  - **P@3: 0.333 → 0.389** (+0.056), MRR@10=0.950 유지
+  - secondary 20개 중 13개 top-5 내 검색, 5개 top-3 내 검색
+- [x] `doc/rag-test-reports/v0.8.1_2026-05-04_qrel-expansion-v3.md` 리포트 저장
 
-### 우선순위
+### 잔여 TODO — P@3 ≥ 0.60 달성
 
-GraphDB RAG Phase 4 완료 후 진행 권장.
-P@3는 현재 라이브 서비스 품질에 영향 없음 (Recall@5=1.0 유지 중).
+- [ ] gardener 상세 API 또는 retrieval 로그로 top-3 실제 l3_id 확인
+- [ ] 실제 top-3에 등장하는 청크를 qrel로 등록 (v4 dataset)
+  - secondary가 top-5 밖인 7개 쿼리 우선 분석
+  - 동일 섹션 인접 청크(neighbor_window 결과) 활용
+- [ ] v4 dataset으로 재평가 → P@3 ≥ 0.60 목표
+
+### 현재 P@3 상한 분석
+
+```
+qrel 수 = 2/query, secondary top-3 적중 = k/20 일 때:
+P@3 = (k + 30) / 90
+k=5 → P@3=0.389 (현재)
+k=24 → P@3=0.600 (목표, 현재 top-5 내 13개이므로 top-3 도달 필요)
+```
 
 ---
 
