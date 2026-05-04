@@ -21,6 +21,7 @@ def get_related_l1_ids(
     project_id: int | str,
     depth: int = 1,
     *,
+    max_siblings: Optional[int] = None,
     typedb_host: Optional[str] = None,
     typedb_port: Optional[str] = None,
     typedb_database: Optional[str] = None,
@@ -32,13 +33,25 @@ def get_related_l1_ids(
 
     The hit l1_ids themselves are excluded from the result.
     Returns [] when TypeDB is unreachable or TYPEDB_HOST is not configured.
+
+    Args:
+        max_siblings: Maximum number of sibling l1_ids to return. When None,
+            falls back to the ``GRAPH_MAX_SIBLINGS`` env var, then unlimited.
+            Limiting siblings reduces P@3 degradation caused by graph expansion
+            results competing with secondary qrels in cross-encoder reranking.
     """
     host = typedb_host or os.environ.get("TYPEDB_HOST", "")
     if not host:
         return []
 
+    limit = max_siblings
+    if limit is None:
+        env_val = os.environ.get("GRAPH_MAX_SIBLINGS", "")
+        if env_val.isdigit():
+            limit = int(env_val)
+
     try:
-        return _fetch_sibling_l1_ids(
+        results = _fetch_sibling_l1_ids(
             hit_l1_ids=hit_l1_ids,
             project_id=str(project_id),
             host=host,
@@ -47,6 +60,10 @@ def get_related_l1_ids(
         )
     except Exception:
         return []
+
+    if limit is not None and limit > 0:
+        return results[:limit]
+    return results
 
 
 def _fetch_sibling_l1_ids(

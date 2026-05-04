@@ -282,6 +282,44 @@ def test_get_related_l1_ids_returns_sibling_ids(monkeypatch) -> None:
     assert set(result) == {"l1-sib1", "l1-sib2"}
 
 
+def test_get_related_l1_ids_max_siblings_param(monkeypatch) -> None:
+    """max_siblings kwarg should cap returned list length."""
+    monkeypatch.setenv("TYPEDB_HOST", "localhost")
+    siblings = ["l1-a", "l1-b", "l1-c", "l1-d"]
+    with patch(
+        "flows.xylem_flow.graph_context._fetch_sibling_l1_ids",
+        return_value=siblings,
+    ):
+        result = get_related_l1_ids(["l1-hit"], project_id=1, max_siblings=2)
+    assert len(result) == 2
+    assert all(r in siblings for r in result)
+
+
+def test_get_related_l1_ids_max_siblings_env(monkeypatch) -> None:
+    """GRAPH_MAX_SIBLINGS env var should cap returned list length when max_siblings is None."""
+    monkeypatch.setenv("TYPEDB_HOST", "localhost")
+    monkeypatch.setenv("GRAPH_MAX_SIBLINGS", "1")
+    siblings = ["l1-a", "l1-b", "l1-c"]
+    with patch(
+        "flows.xylem_flow.graph_context._fetch_sibling_l1_ids",
+        return_value=siblings,
+    ):
+        result = get_related_l1_ids(["l1-hit"], project_id=1)
+    assert len(result) == 1
+
+
+def test_get_related_l1_ids_max_siblings_zero_means_unlimited(monkeypatch) -> None:
+    """max_siblings=0 (falsy) should not cap the result."""
+    monkeypatch.setenv("TYPEDB_HOST", "localhost")
+    siblings = ["l1-a", "l1-b", "l1-c"]
+    with patch(
+        "flows.xylem_flow.graph_context._fetch_sibling_l1_ids",
+        return_value=siblings,
+    ):
+        result = get_related_l1_ids(["l1-hit"], project_id=1, max_siblings=0)
+    assert len(result) == 3
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 4 — retriever.py graph expansion unit tests
 # ─────────────────────────────────────────────────────────────────────────────
@@ -470,6 +508,103 @@ def test_retrieve_and_enrich_graph_exception_does_not_break_results(monkeypatch)
     # Qdrant results still present despite graph failure
     assert len(result) >= 1
     assert result[0]["l1_id"] == "l1-hit"
+
+
+def _make_graph_expansion_harness(monkeypatch, related_l1_ids, graph_ctx_factory=None):
+    """Shared setup for max_graph_results tests."""
+    monkeypatch.setenv("TYPEDB_HOST", "localhost")
+    conn = _make_mock_conn()
+    hit_ctx = {
+        "l1_id": "l1-hit", "l2_id": "l2-x", "matched_l3_id": "l3-aaa",
+        "breadcrumb": "", "l1_title": "", "l2_summary": "", "section_heading": "",
+        "matched_content": "", "surrounding_context": "", "l2_section_id": "",
+        "l2_block_type": "", "source_path": "", "doc_name": "",
+    }
+
+    def _graph_ctx(conn, l3_id, **kwargs):
+        return {
+            "l1_id": f"l1-{l3_id}", "l2_id": "", "matched_l3_id": l3_id,
+            "breadcrumb": "", "l1_title": "", "l2_summary": "", "section_heading": "",
+            "matched_content": "", "surrounding_context": "", "l2_section_id": "",
+            "l2_block_type": "", "source_path": "", "doc_name": "",
+        }
+
+    return conn, hit_ctx, graph_ctx_factory or _graph_ctx
+
+
+def test_retrieve_and_enrich_max_graph_results_param(monkeypatch) -> None:
+    """max_graph_results kwarg should cap the number of graph_expansion results appended."""
+    conn, hit_ctx, graph_ctx = _make_graph_expansion_harness(
+        monkeypatch,
+        related_l1_ids=["l1-sib1", "l1-sib2", "l1-sib3"],
+    )
+
+    # cursor returns a distinct l3_id for each related l1
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchone.side_effect = [("l3-sib1",), ("l3-sib2",), ("l3-sib3",)]
+
+    with patch("flows.xylem_flow.retriever.qdrant_search_l3_points", return_value=[_mock_qdrant_hit("l3-aaa")]):
+        with patch("flows.xylem_flow.retriever.embed_query_local", return_value=[0.1] * 1024):
+            with patch("flows.xylem_flow.retriever.fetch_rich_context", side_effect=[hit_ctx, graph_ctx(conn, "l3-sib1"), graph_ctx(conn, "l3-sib2")]):
+                with patch("flows.xylem_flow.project_config.resolve_retrieval_settings") as mock_res:
+                    mock_res.return_value = MagicMock(
+                        embedding_backend="local",
+                        local_embedding_addr="http://localhost:18789",
+                        qdrant_host="localhost", qdrant_port=6333,
+                        collection="gopedia_markdown", vector_name="",
+                        embedding_model="text-embedding-3-small",
+                    )
+                    with patch("flows.xylem_flow.project_config.fetch_project_source_metadata", return_value={}):
+                        with patch(
+                            "flows.xylem_flow.graph_context.get_related_l1_ids",
+                            return_value=["l1-sib1", "l1-sib2", "l1-sib3"],
+                        ):
+                            result = retrieve_and_enrich(
+                                "test query", conn,
+                                project_id=1,
+                                use_graph_context=True,
+                                max_graph_results=2,
+                            )
+
+    graph_results = [r for r in result if r.get("source") == "graph_expansion"]
+    assert len(graph_results) <= 2, "max_graph_results=2 should cap graph expansion at 2"
+
+
+def test_retrieve_and_enrich_max_graph_results_env(monkeypatch) -> None:
+    """GRAPH_MAX_RESULTS env var should cap graph expansion when max_graph_results is None."""
+    monkeypatch.setenv("GRAPH_MAX_RESULTS", "1")
+    conn, hit_ctx, graph_ctx = _make_graph_expansion_harness(
+        monkeypatch,
+        related_l1_ids=["l1-sib1", "l1-sib2"],
+    )
+
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchone.side_effect = [("l3-sib1",), ("l3-sib2",)]
+
+    with patch("flows.xylem_flow.retriever.qdrant_search_l3_points", return_value=[_mock_qdrant_hit("l3-aaa")]):
+        with patch("flows.xylem_flow.retriever.embed_query_local", return_value=[0.1] * 1024):
+            with patch("flows.xylem_flow.retriever.fetch_rich_context", side_effect=[hit_ctx, graph_ctx(conn, "l3-sib1")]):
+                with patch("flows.xylem_flow.project_config.resolve_retrieval_settings") as mock_res:
+                    mock_res.return_value = MagicMock(
+                        embedding_backend="local",
+                        local_embedding_addr="http://localhost:18789",
+                        qdrant_host="localhost", qdrant_port=6333,
+                        collection="gopedia_markdown", vector_name="",
+                        embedding_model="text-embedding-3-small",
+                    )
+                    with patch("flows.xylem_flow.project_config.fetch_project_source_metadata", return_value={}):
+                        with patch(
+                            "flows.xylem_flow.graph_context.get_related_l1_ids",
+                            return_value=["l1-sib1", "l1-sib2"],
+                        ):
+                            result = retrieve_and_enrich(
+                                "test query", conn,
+                                project_id=1,
+                                use_graph_context=True,
+                            )
+
+    graph_results = [r for r in result if r.get("source") == "graph_expansion"]
+    assert len(graph_results) <= 1, "GRAPH_MAX_RESULTS=1 should cap graph expansion at 1"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
