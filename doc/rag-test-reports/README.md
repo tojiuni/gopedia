@@ -99,29 +99,32 @@ curl -s "$GARDENER/compare?baseline=$BASE&candidate=$CAND&metric=Recall@5" | jq 
 
 ## Version별 IR 지표 현황 (요약)
 
-리포트에서 인용한 **aggregate** 지표(소수 **둘째 자리** 반올림, `mcp-2.1.0`의 nDCG는 **0.9631 → 0.96**). **마지막 점(`mcp-2.1.0*`)**만 Gardener **osteon 30q** — 앞 7점은 **`universitas_factual_v1` 44q**와 동일 정의(연속 추세로 읽을 수 있음). **7↔8 구간**은 서로 **다른 데이터셋**이므로 개선/악화로 해석하지 말 것. (v0.1.0은 [수동 쿼리](v0.1.0_2026-04-01_neunexus-gopedia.md)만 있음.)
+리포트에서 인용한 **aggregate** 지표(소수 **둘째 자리** 반올림). 앞 7점은 **`universitas_factual_v1` 44q**와 동일 정의(연속 추세로 읽을 수 있음). **`v0.8.0`·`v0.8.1`** 은 **osteon 30q** — **7↔8 구간**은 서로 **다른 데이터셋**이므로 개선/악화로 해석하지 말 것. (v0.1.0은 [수동 쿼리](v0.1.0_2026-04-01_neunexus-gopedia.md)만 있음.)
 
 ```mermaid
 xychart-beta
-    title "IR aggregate (앞 7: universitas 44q, 마지막: mcp-2.1.0 osteon 30q*)"
-    x-axis [v0.2, v0.3, v0.4, "v0.5.0", "v0.5.1", "v0.6a", "v0.6b", "mcp*"]
+    title "IR aggregate (앞 7: universitas 44q, v0.8.x: osteon 30q)"
+    x-axis [v0.2, v0.3, v0.4, "v0.5.0", "v0.5.1", "v0.6a", "v0.6b", "v0.8.0", "v0.8.1"]
     y-axis "score" 0.0 --> 1.0
-    line [0.79, 0.64, 0.50, 0.50, 0.61, 0.50, 0.48, 1.00]
-    line [0.39, 0.56, 0.32, 0.28, 0.37, 0.36, 0.37, 0.95]
-    line [0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40, 0.96]
+    line [0.79, 0.64, 0.50, 0.50, 0.61, 0.50, 0.48, 1.00, 0.88]
+    line [0.39, 0.56, 0.32, 0.28, 0.37, 0.36, 0.37, 0.95, 0.95]
+    line [0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40, 0.96, 0.87]
 ```
 
-| 시리즈 | v0.2 → v0.6b (44q) | mcp-2.1.0* (osteon 30q) | 출처 |
-|--------|-------------------|-------------------------|------|
-| **Recall@5** | 0.79, 0.64, 0.50, 0.50, 0.61, 0.50, 0.48 | **1.00** | 44q: [v0.2.0](v0.2.0_2026-04-01_neunexus-gopedia.md)…[v0.6.0 04-03](v0.6.0-reingest_2026-04-03_universitas-factual.md) · mcp: [§2-1](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md) |
-| **MRR@10** | 0.39, 0.56, 0.32, 0.28, 0.37, 0.36, 0.37 | **0.95** | 44q 출처는 Recall@5와 동일 · mcp §2-1 |
-| **nDCG@10** | 0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40 | **0.96** | 동일 |
-| **P@3** | 0.21, 0.21, 0.14, 0.14, 0.17, 0.17, 0.16 | **0.33** | 44q는 위행; mcp는 §2-1(만점 아님) |
-| `summary/quality_score` (mcp만) | — | **1.0** | Gardener KPI |
+| 시리즈 | v0.2 → v0.6b (44q) | v0.8.0 (osteon 30q) | v0.8.1 (osteon 30q) | 출처 |
+|--------|-------------------|---------------------|---------------------|------|
+| **Recall@5** | 0.79, 0.64, 0.50, 0.50, 0.61, 0.50, 0.48 | **1.00** | **0.88** | 44q: [v0.2.0](v0.2.0_2026-04-01_neunexus-gopedia.md)…[v0.6.0 04-03](v0.6.0-reingest_2026-04-03_universitas-factual.md) · [v0.8.0](v0.8.0_2026-05-03_graphdb-baseline.md) · [v0.8.1](v0.8.1_2026-05-04_qrel-expansion-v3.md) |
+| **MRR@10** | 0.39, 0.56, 0.32, 0.28, 0.37, 0.36, 0.37 | **0.95** | **0.95** | 44q 출처는 Recall@5와 동일 |
+| **nDCG@10** | 0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40 | **0.96** | **0.87** | 동일 |
+| **P@3** | 0.21, 0.21, 0.14, 0.14, 0.17, 0.17, 0.16 | **0.33** | **0.39** | v0.8.1은 qrel 확장(45 qrels) 효과 |
 
-> **v0.5.0** 열: [v0.5.0](v0.5.0_2026-04-02_universitas-factual.md)에서 **v0.4.0 대비 final** run 집계. `mcp*`: [mcp-2.1.0…](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md) `GET /runs/{id}/metrics` / KPI. Mermaid `xychart` **색·범례**는 뷰어마다 달라 **수치는 위 표**를 본다.
+> **v0.5.0** 열: [v0.5.0](v0.5.0_2026-04-02_universitas-factual.md)에서 **v0.4.0 대비 final** run 집계. Mermaid `xychart` **색·범례**는 뷰어마다 달라 **수치는 위 표**를 본다.
 
-> **v0.7.0**: Answer Agent(계층형 RAG) 도입 버전. Gardener IR 지표 미측정 — 수동 쿼리 5건으로 토큰 효율성 분석. 성공률 4/5(80%), 평균 iterations 4.2, 평균 추정 입력 토큰 ~9,600. IR 비교는 P1 개선(IMP-09~11) 적용 후 v0.8.0에서 측정 예정. 상세: [v0.7.0_2026-05-01_neunexus-answer-agent.md](v0.7.0_2026-05-01_neunexus-answer-agent.md)
+> **v0.7.0**: Answer Agent(계층형 RAG) 도입 버전. Gardener IR 지표 미측정 — 수동 쿼리 5건으로 토큰 효율성 분석. 성공률 4/5(80%), 평균 iterations 4.2, 평균 추정 입력 토큰 ~9,600. 상세: [v0.7.0_2026-05-01_neunexus-answer-agent.md](v0.7.0_2026-05-01_neunexus-answer-agent.md)
+
+> **v0.8.0**: GraphDB(TypeDB) RAG 강화 PR #38 이후 첫 IR 베이스라인. osteon 30q / qrel v2 (30 primary). Recall@5=1.000, MRR@10=0.950, P@3=0.333. 상세: [v0.8.0_2026-05-03_graphdb-baseline.md](v0.8.0_2026-05-03_graphdb-baseline.md)
+
+> **v0.8.1**: Qrel Expansion v3 — secondary 15개 추가(45 qrels 확정, Gemini 코드리뷰 반영). P@3 0.333→0.389(+0.056). Recall@5·nDCG@10 수치 하락은 qrel 분모 증가 효과. 상세: [v0.8.1_2026-05-04_qrel-expansion-v3.md](v0.8.1_2026-05-04_qrel-expansion-v3.md)
 
 > **주석: `mcp-2.1.0` IR이 높게 보일 수 있었던 이유** (상세: [mcp-2.1.0… §2-5](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md)와 동일 취지)  
 > 1) **큐레이션된 osteon 번들** — Gardener 내장 `sample_osteon_guide_30` 계열은 질의·qrel이 osteon 가이드 맥락에 맞춰 있어, 오픈도메인 44q보다 R@5·MRR·nDCG가 오르기 쉽다.  
@@ -147,3 +150,5 @@ xychart-beta
 | v0.6.0 reingest | 2026-04-03 | 동 데이터셋 후속 | [v0.6.0-reingest_2026-04-03_universitas-factual.md](v0.6.0-reingest_2026-04-03_universitas-factual.md) |
 | mcp 2.1.0 + stack | 2026-04-08 | Gardener + Gopedia + gopedia_mcp (스모크 + **osteon 30q**; IR는 위 차트 `mcp*` 절) | [mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md](mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md) |
 | **v0.7.0** | **2026-05-01** | **Answer Agent 계층형 RAG — 수동 쿼리 5건, 토큰 효율 분석** | [**v0.7.0_2026-05-01_neunexus-answer-agent.md**](v0.7.0_2026-05-01_neunexus-answer-agent.md) |
+| **v0.8.0** | **2026-05-03** | **GraphDB TypeDB RAG 베이스라인 — osteon 30q, qrel v2 (PR #38)** | [**v0.8.0_2026-05-03_graphdb-baseline.md**](v0.8.0_2026-05-03_graphdb-baseline.md) |
+| **v0.8.1** | **2026-05-04** | **Qrel Expansion v3 — osteon 30q 45 qrels, P@3 0.333→0.389** | [**v0.8.1_2026-05-04_qrel-expansion-v3.md**](v0.8.1_2026-05-04_qrel-expansion-v3.md) |

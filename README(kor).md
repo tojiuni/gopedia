@@ -136,19 +136,19 @@ flowchart TB
 
 ### RAG 품질: 리포트 버전별 IR 지표(스냅샷)
 
-Gardener **집계** 지표(**Recall@5**, **MRR@10**, **nDCG@10**). 앞 7개 점은 **`universitas_factual_v1`(44q)** 정의, 마지막 **`mcp*`** 는 **[`mcp-2.1.0` osteon 30q](./doc/rag-test-reports/mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md)** — **데이터셋이 다르므로** `v0.6b`에서 `mcp*`로 이어지는 상승선을 제품 개선으로 단정하지 마세요. **전체 표, 리포트별 링크, P@3, osteon 점수가 높게 보이는 이유**는 [RAG 리포트 README의 IR 스냅샷 절](./doc/rag-test-reports/README.md#ir-metrics-snapshot)을 참고하세요.
+Gardener **집계** 지표(**Recall@5**, **MRR@10**, **nDCG@10**). 앞 7개 점은 **`universitas_factual_v1`(44q)** 정의, **`v0.8.0`**·**`v0.8.1`** 은 **osteon 30q** 데이터셋 — **데이터셋이 다르므로** `v0.6b`→`v0.8.0` 구간을 제품 개선 추세로 단정하지 마세요. **전체 표, 리포트별 링크, P@3, osteon 점수가 높게 보이는 이유**는 [RAG 리포트 README의 IR 스냅샷 절](./doc/rag-test-reports/README.md#ir-metrics-snapshot)을 참고하세요.
 
 ```mermaid
 xychart-beta
-    title "IR aggregate (7× universitas 44q, last: mcp-2.1.0 osteon 30q*)"
-    x-axis [v0.2, v0.3, v0.4, "v0.5.0", "v0.5.1", "v0.6a", "v0.6b", "mcp*"]
+    title "IR aggregate (7× universitas 44q, v0.8.x: osteon 30q)"
+    x-axis [v0.2, v0.3, v0.4, "v0.5.0", "v0.5.1", "v0.6a", "v0.6b", "v0.8.0", "v0.8.1"]
     y-axis "score" 0.0 --> 1.0
-    line [0.79, 0.64, 0.50, 0.50, 0.61, 0.50, 0.48, 1.00]
-    line [0.39, 0.56, 0.32, 0.28, 0.37, 0.36, 0.37, 0.95]
-    line [0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40, 0.96]
+    line [0.79, 0.64, 0.50, 0.50, 0.61, 0.50, 0.48, 1.00, 0.88]
+    line [0.39, 0.56, 0.32, 0.28, 0.37, 0.36, 0.37, 0.95, 0.95]
+    line [0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40, 0.96, 0.87]
 ```
 
-→ **상세(표, 리포트 링크, mcp 주석):** [`doc/rag-test-reports/README.md#ir-metrics-snapshot`](./doc/rag-test-reports/README.md#ir-metrics-snapshot)
+→ **상세(표, 리포트 링크, 주석):** [`doc/rag-test-reports/README.md#ir-metrics-snapshot`](./doc/rag-test-reports/README.md#ir-metrics-snapshot)
 
 ---
 
