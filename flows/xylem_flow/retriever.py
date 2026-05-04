@@ -44,6 +44,76 @@ WHERE id = ANY(%s::uuid[])
 
 _cross_encoder_cache: Dict[str, Any] = {}
 
+# ── PostgreSQL FTS + RRF 하이브리드 ──────────────────────────────────────────
+
+_PG_FTS_SQL = """
+SELECT l3.id::text,
+       ts_rank_cd(
+           to_tsvector('simple', coalesce(l3.content, '')),
+           plainto_tsquery('simple', %s)
+       ) AS fts_rank
+FROM knowledge_l3 l3
+JOIN knowledge_l2 l2 ON l3.l2_id = l2.id
+WHERE to_tsvector('simple', coalesce(l3.content, ''))
+      @@ plainto_tsquery('simple', %s)
+  {project_filter}
+ORDER BY fts_rank DESC
+LIMIT %s
+"""
+
+_PG_FTS_PROJECT_FILTER = "AND l2.project_id = %s"
+
+
+def pg_fts_search_l3(
+    query: str,
+    conn: Any,
+    limit: int = 30,
+    project_id: Optional[int] = None,
+) -> List[Tuple[str, float]]:
+    """PostgreSQL simple-config FTS on knowledge_l3.content.
+
+    Returns [(l3_id, fts_rank)] in descending rank order.
+    Falls back to empty list on any error (best-effort).
+
+    Note: 'simple' tokenizer handles Korean whitespace splitting without
+    additional extensions. For better Korean coverage, a GIN index on
+    to_tsvector('simple', content) is recommended but not required.
+    """
+    pf = _PG_FTS_PROJECT_FILTER if project_id is not None else ""
+    sql = _PG_FTS_SQL.format(project_filter=pf)
+    params: list = [query, query]
+    if project_id is not None:
+        params.append(int(project_id))
+    params.append(limit)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [(str(row[0]), float(row[1])) for row in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def rrf_fuse(
+    dense_ids: List[str],
+    sparse_ids: List[str],
+    k: int = 60,
+    alpha: float = 0.5,
+) -> List[str]:
+    """Reciprocal Rank Fusion of dense and FTS result lists.
+
+    alpha = weight for dense scores (1 - alpha for FTS scores).
+    Higher alpha = more weight on semantic similarity.
+    Default alpha=0.5 gives equal weight.
+
+    See: Cormack, Clarke, and Buettcher (2009) "Reciprocal Rank Fusion".
+    """
+    scores: Dict[str, float] = {}
+    for rank, l3_id in enumerate(dense_ids):
+        scores[l3_id] = scores.get(l3_id, 0.0) + alpha / (k + rank + 1)
+    for rank, l3_id in enumerate(sparse_ids):
+        scores[l3_id] = scores.get(l3_id, 0.0) + (1.0 - alpha) / (k + rank + 1)
+    return sorted(scores, key=lambda x: scores[x], reverse=True)
+
 
 def _rewrite_query(query: str) -> str:
     """Rewrite Korean colloquial query into technical terms using LLM.
@@ -354,6 +424,8 @@ def retrieve_and_enrich(
     reranker_model: Optional[str] = None,
     use_graph_context: Optional[bool] = None,
     max_graph_results: Optional[int] = None,
+    use_hybrid: Optional[bool] = None,
+    hybrid_alpha: Optional[float] = None,
 ) -> List[dict]:
     """If ``limit`` is passed (legacy), it overrides ``final_limit``.
 
@@ -362,17 +434,31 @@ def retrieve_and_enrich(
     Graph-expanded results are appended after Qdrant results and carry
     ``source: "graph_expansion"`` to distinguish their origin.
 
+    When ``use_hybrid`` is None, it reads ``GOPEDIA_HYBRID_SEARCH_ENABLED``.
+    Hybrid mode adds PostgreSQL FTS candidates fused via RRF with Qdrant dense
+    results, improving recall for exact-keyword queries (P3-D).
+
     Args:
         max_graph_results: Maximum number of graph-expansion results to append.
             When None, falls back to the ``GRAPH_MAX_RESULTS`` env var, then
-            unlimited. Limiting graph results reduces P@3 degradation caused by
-            graph-expanded chunks competing with secondary qrels in reranking.
+            unlimited.
+        use_hybrid: Enable hybrid search (Qdrant dense + PostgreSQL FTS + RRF).
+            When None, reads GOPEDIA_HYBRID_SEARCH_ENABLED env var.
+        hybrid_alpha: Weight for dense scores in RRF (0.0–1.0, default 0.5).
+            When None, reads GOPEDIA_HYBRID_ALPHA env var, then defaults to 0.5.
     """
     query = _rewrite_query(query)
     if use_reranker is None:
         use_reranker = os.environ.get("GOPEDIA_RERANKER_ENABLED", "false").lower() in ("true", "1")
     if use_graph_context is None:
         use_graph_context = bool(os.environ.get("TYPEDB_HOST", ""))
+    if use_hybrid is None:
+        use_hybrid = os.environ.get("GOPEDIA_HYBRID_SEARCH_ENABLED", "false").lower() in ("true", "1")
+    if hybrid_alpha is None:
+        try:
+            hybrid_alpha = float(os.environ.get("GOPEDIA_HYBRID_ALPHA", "0.5"))
+        except ValueError:
+            hybrid_alpha = 0.5
     from flows.xylem_flow.project_config import (
         fetch_project_source_metadata,
         resolve_retrieval_settings,
@@ -407,13 +493,47 @@ def retrieve_and_enrich(
         vector_name=resolved.vector_name,
         project_id_filter=project_id,
     )
-    rows: List[Tuple[Any, str]] = []
+
+    # ── Hybrid: PostgreSQL FTS + RRF fusion ─────────────────────────────────
+    hit_map: Dict[str, Any] = {}
+    dense_ids: List[str] = []
     for h in hits:
         payload = h.payload or {}
         lid = payload.get("l3_id")
         if not lid:
             continue
-        rows.append((h, str(lid)))
+        lid = str(lid)
+        hit_map[lid] = h
+        dense_ids.append(lid)
+
+    if use_hybrid:
+        fts_results = pg_fts_search_l3(
+            query,
+            conn,
+            limit=candidate_limit,
+            project_id=project_id,
+        )
+        sparse_ids = [l3_id for l3_id, _ in fts_results]
+        fused_ids = rrf_fuse(dense_ids, sparse_ids, alpha=hybrid_alpha or 0.5)
+        # FTS-only hits: fetch a minimal Qdrant-like object placeholder
+        fts_only = [lid for lid in sparse_ids if lid not in hit_map]
+        if fts_only:
+            # Store FTS-only IDs with a sentinel score so downstream code works
+            class _FtsHit:
+                def __init__(self, l3_id: str, fts_rank: float):
+                    self.payload = {"l3_id": l3_id}
+                    self.score = fts_rank  # FTS rank as pseudo-score
+
+            for l3_id, fts_rank in fts_results:
+                if l3_id in fts_only:
+                    hit_map[l3_id] = _FtsHit(l3_id, fts_rank)
+        ordered_ids = fused_ids[:candidate_limit]
+    else:
+        ordered_ids = dense_ids
+
+    rows: List[Tuple[Any, str]] = [
+        (hit_map[lid], lid) for lid in ordered_ids if lid in hit_map
+    ]
 
     if use_reranker and rows:
         _rmodel = reranker_model or os.environ.get(
