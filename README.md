@@ -128,19 +128,19 @@ Gopedia does not just "chunk" data; it categorizes it into a meaningful hierarch
 
 ### RAG quality: IR metrics by report version (snapshot)
 
-Gardener aggregate metrics (**Recall@5**, **MRR@10**, **nDCG@10**) across saved evaluation reports. The first seven points use the **`universitas_factual_v1` (44q)** definition; the last point **`mcp*`** is **[`mcp-2.1.0` osteon 30q](./doc/rag-test-reports/mcp-2.1.0_2026-04-08_gardener-gopedia-stack.md)** — a different dataset, so do not read a rising line from `v0.6b` to `mcp*` as a product improvement. **Full tables, per-report links, P@3, and why osteon scores can look high** are documented in [`doc/rag-test-reports/README.md`](./doc/rag-test-reports/README.md) (see the [IR metrics snapshot](./doc/rag-test-reports/README.md#ir-metrics-snapshot) section).
+Gardener aggregate metrics (**Recall@5**, **MRR@10**, **nDCG@10**) across saved evaluation reports. The first seven points use the **`universitas_factual_v1` (44q)** definition; **`v0.8.0`** and **`v0.8.1`** use the **osteon 30q** dataset — a different dataset, so do not compare trends across the `v0.6b`→`v0.8.0` boundary as a product improvement. **Full tables, per-report links, P@3, and why osteon scores can look high** are documented in [`doc/rag-test-reports/README.md`](./doc/rag-test-reports/README.md) (see the [IR metrics snapshot](./doc/rag-test-reports/README.md#ir-metrics-snapshot) section).
 
 ```mermaid
 xychart-beta
-    title "IR aggregate (7× universitas 44q, last: mcp-2.1.0 osteon 30q*)"
-    x-axis [v0.2, v0.3, v0.4, "v0.5.0", "v0.5.1", "v0.6a", "v0.6b", "mcp*"]
+    title "IR aggregate (7× universitas 44q, v0.8.x: osteon 30q)"
+    x-axis [v0.2, v0.3, v0.4, "v0.5.0", "v0.5.1", "v0.6a", "v0.6b", "v0.8.0", "v0.8.1"]
     y-axis "score" 0.0 --> 1.0
-    line [0.79, 0.64, 0.50, 0.50, 0.61, 0.50, 0.48, 1.00]
-    line [0.39, 0.56, 0.32, 0.28, 0.37, 0.36, 0.37, 0.95]
-    line [0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40, 0.96]
+    line [0.79, 0.64, 0.50, 0.50, 0.61, 0.50, 0.48, 1.00, 0.88]
+    line [0.39, 0.56, 0.32, 0.28, 0.37, 0.36, 0.37, 0.95, 0.95]
+    line [0.49, 0.58, 0.37, 0.34, 0.45, 0.40, 0.40, 0.96, 0.87]
 ```
 
-→ **Details (full table, report links, mcp notes):** [`doc/rag-test-reports/README.md#ir-metrics-snapshot`](./doc/rag-test-reports/README.md#ir-metrics-snapshot)
+→ **Details (full table, report links, notes):** [`doc/rag-test-reports/README.md#ir-metrics-snapshot`](./doc/rag-test-reports/README.md#ir-metrics-snapshot)
 
 ---
 
